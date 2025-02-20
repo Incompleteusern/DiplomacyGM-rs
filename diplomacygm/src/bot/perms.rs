@@ -1,0 +1,79 @@
+// from typing import Callable
+
+// from discord.ext import commands
+
+// from bot.utils import is_gm, is_gm_channel, get_player_by_role, is_player_channel, get_player_by_channel
+// from diplomacy.persistence.manager import Manager
+// from diplomacy.persistence.player import Player
+
+
+// pub async fn player(ctx: Context<'_>) -> Result<bool, Error> {
+//     // if !is_gm(ctx.message.author) {
+//     //     // return Err(Issue(f"You cannot run this command because you are not a GM."))
+//     // }
+
+//     // if !is_gm_channel(ctx.channel):
+//     //     raise PermissionError(f"You cannot run this command in a non-GM channel.")
+// }
+
+// # adds one extra argument, player, which is None if run by a GM
+// def player(description: str = "run this command"):
+//     def player_check(
+//         function: Callable[[Player | None, commands.Context, Manager], tuple[str, str | None]]
+//     ) -> Callable[[commands.Context, Manager], tuple[str, str | None]]:
+//         def f(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//             player = get_player_by_role(ctx.message.author, manager, ctx.guild.id)
+//             if player:
+//                 if not is_player_channel(player.name, ctx.channel):
+//                     raise PermissionError(f"You cannot {description} as a player outside of your orders channel.")
+//             else:
+//                 if not is_gm(ctx.message.author):
+//                     raise PermissionError(f"You cannot {description} because you are neither a GM nor a player.")
+//                 player_channel = get_player_by_channel(ctx.channel, manager, ctx.guild.id)
+//                 if player_channel is not None:
+//                     player = player_channel
+//                 elif not is_gm_channel(ctx.channel):
+//                     raise PermissionError(f"You cannot {description} as a GM in a non-GM channel.")
+//             return function(player, ctx, manager)
+
+//         return f
+
+//     return player_check
+
+use tracing::debug;
+
+use super::{bot::{Context, Error}, utils::{is_gm, is_gm_channel}};
+
+pub async fn gm(ctx: Context<'_>) -> Result<bool, Error> {
+    if !is_gm(ctx).await {
+        debug!("not gm");
+        return Ok(false);
+        // (f"You cannot run this command because you are not a GM."))
+    }
+
+    if !is_gm_channel(ctx).await {
+        debug!("not gm channel");
+        return Ok(false);
+        // (f"You cannot run this command in a non-GM channel.")
+    }
+
+    Ok(true)
+}
+
+// def gm(description: str = "run this command"):
+//     def gm_check(
+//         function: Callable[[commands.Context, Manager], tuple[str, str | None]]
+//     ) -> Callable[[commands.Context, Manager], tuple[str, str | None]]:
+
+//         def f(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//             if not is_gm(ctx.message.author):
+//                 raise PermissionError(f"You cannot {description} because you are not a GM.")
+
+//             if not is_gm_channel(ctx.channel):
+//                 raise PermissionError(f"You cannot {description} in a non-GM channel.")
+
+//             return function(ctx, manager)
+
+//         return f
+
+//     return gm_check

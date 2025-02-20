@@ -10,4 +10,3 @@ If you find any bugs or inconsistencies or wish to see new features (for game-ru
 yourself or rather not subject your players to), please message icecream_guy on Discord.
 
 # DiplomacyGM-rs
-# DiplomacyGM-rs

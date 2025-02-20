@@ -1,0 +1,779 @@
+// import logging
+// import os
+// import re
+// import time
+// from typing import Callable
+// import inspect
+
+// import discord
+// from discord import HTTPException
+// from discord.ext import commands
+
+// from bot import command
+// from diplomacy.persistence.manager import Manager
+
+// intents = discord.Intents.default()
+// intents.message_content = True
+// bot = commands.Bot(command_prefix=".", intents=intents)
+// logger = logging.getLogger(__name__)
+
+// manager = Manager()
+
+use std::sync::Arc;
+
+use poise::samples::HelpConfiguration;
+use rand::seq::IndexedRandom;
+use serenity::{all::{CreateMessage, GatewayIntents, Mention, ReactionType}, Client};
+use tracing::{debug, info};
+
+use crate::bot::utils::reply_if_slash;
+
+pub struct Data {} // User data, which is stored and accessible in all command invocations
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Context<'a> = poise::Context<'a, Data, Error>;
+
+// # async def _handle_command(
+// #     function: Callable[[commands.Context, Manager], tuple[str, str | None]],
+// #     ctx: discord.ext.commands.Context,
+// # ) -> None:
+// #     start = time.time()
+
+// #     ...
+
+// #     elapsed = time.time() - start
+// #     logger.debug(
+// #         f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}' -> \n{response} | {elapsed}s"
+// #     )
+
+#[poise::command(prefix_command, track_edits, category = "Utility")]
+async fn help(
+    ctx: Context<'_>,
+    #[description = "Command to get help for"]
+    #[rest]
+    mut command: Option<String>,
+) -> Result<(), Error> {
+    // This makes it possible to just make `help` a subcommand of any command
+    // `/fruit help` turns into `/help fruit`
+    // `/fruit help apple` turns into `/help fruit apple`
+    if ctx.invoked_command_name() != "help" {
+        command = match command {
+            Some(c) => Some(format!("{} {}", ctx.invoked_command_name(), c)),
+            None => Some(ctx.invoked_command_name().to_string()),
+        };
+    }
+    let extra_text_at_bottom = "\
+Type `.help command` for more info on a command.
+You can edit your `.help` message to the bot and the bot will edit its response.";
+
+    let config = HelpConfiguration {
+        show_subcommands: true,
+        show_context_menu_commands: true,
+        ephemeral: true,
+        extra_text_at_bottom,
+
+        ..Default::default()
+    };
+    poise::builtins::help(ctx, command.as_deref(), config).await?;
+    Ok(())
+}
+
+
+const PING_TEXT_CHOICES: [&str; 3] = ["proudly states", "fervently believes in the power of", "is being mind controlled by"];
+
+/// Checks bot listens and responds.
+#[poise::command(
+    slash_command, 
+    prefix_command,
+    category = "Utility",
+)]
+async fn ping(
+    ctx: Context<'_>,
+    #[rest] text: Option<String>,
+) -> Result<(), Error> {
+    let mut response = "Beep Boop".to_string();
+    if rand::random::<f64>() < 0.1 {
+        let author = ctx.author();
+        let name = author.nick_in(ctx, ctx.guild_id().unwrap()).await.unwrap_or(author.name.to_string());
+        let content = text.unwrap_or("nothing".to_string());
+        
+        response = format!("{} {} {}", name, PING_TEXT_CHOICES.choose(&mut rand::rng()).unwrap(), content);        
+    }
+
+    ctx.say(response).await?;
+    Ok(())
+}
+
+#[poise::command(
+    slash_command,
+    prefix_command,
+    category = "GM",
+    check = "super::perms::gm",
+)]
+async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option<String>) -> Result<(), Error> {
+    if let Some(Mention::Channel(channel_id)) = mention {
+
+        if let Some(content) = text {
+            channel_id.send_message(ctx, CreateMessage::new().content(&content)).await?;
+
+            info!("{} asked me to say '{}' in {}", ctx.author(), content, channel_id.name(ctx).await.unwrap())    
+        }
+    }
+
+    reply_if_slash(ctx, "Sent message!").await?;
+
+    Ok(())
+}
+
+// @perms.gm("botsay")
+// async def botsay(ctx: commands.Context, _: Manager) -> None:
+//     # noinspection PyTypeChecker
+//     if len(ctx.message.channel_mentions) == 0:
+//         return
+//     channel = ctx.message.channel_mentions[0]
+//     content = ctx.message.content
+//     content = content.replace(".botsay", "").replace(channel.mention, "").strip()
+//     if len(content) == 0:
+//         return
+//     await ctx.message.add_reaction("👍")
+//     logger.info(f"{ctx.message.author.name} asked me to say '{content}' in {channel.name}")
+//     await channel.send(content)
+
+
+// static temporary_bumbles: i64 = 3;
+
+// #[poise::command(
+//     prefix_command,
+// )]
+// async fn bumble(
+//     ctx: Context<'_>,
+// ) -> Result<(), Error> {
+//     let list_of_bumble = vec!['b', 'u', 'm', 'b', 'l', 'e'];
+//     list_of_bumble.shuffle(&mut rand::rng());
+//     let word_of_bumble = list_of_bumble.join("");
+//     //     list_of_bumble = list("bumble")
+//     //     random.shuffle(list_of_bumble)
+//     //     word_of_bumble = "".join(list_of_bumble)
+
+//     //     if is_bumble(ctx.author.name) and random.randrange(0, 10) == 0:
+//     //         word_of_bumble = "bumble"
+
+//     //     if word_of_bumble == "bumble":
+//     //         word_of_bumble = "You are the chosen bumble"
+
+//     //         if ctx.author.name not in temporary_bumbles:
+//     //             # no keeping temporary bumbleship easily
+//     //             temporary_bumbles.add(ctx.author.name)
+//     //     if word_of_bumble == "elbmub":
+//     //         word_of_bumble = "elbmub nesohc eht era uoY"
+
+//     //     board = manager.get_board(ctx.guild.id)
+//     //     board.fish -= 1
+//     //     return f"**{word_of_bumble}**", None
+// }
+
+
+
+// def bumble(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     list_of_bumble = list("bumble")
+//     random.shuffle(list_of_bumble)
+//     word_of_bumble = "".join(list_of_bumble)
+
+//     if is_bumble(ctx.author.name) and random.randrange(0, 10) == 0:
+//         word_of_bumble = "bumble"
+
+//     if word_of_bumble == "bumble":
+//         word_of_bumble = "You are the chosen bumble"
+
+//         if ctx.author.name not in temporary_bumbles:
+//             # no keeping temporary bumbleship easily
+//             temporary_bumbles.add(ctx.author.name)
+//     if word_of_bumble == "elbmub":
+//         word_of_bumble = "elbmub nesohc eht era uoY"
+
+//     board = manager.get_board(ctx.guild.id)
+//     board.fish -= 1
+//     return f"**{word_of_bumble}**", None
+
+
+// def fish(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     fish_num = random.randrange(0, 20)
+
+//     debumblify = False
+//     if is_bumble(ctx.author.name) and random.randrange(0, 10) == 0:
+//         # Bumbles are good fishers
+//         if fish_num == 1:
+//             fish_num = 0
+//         elif fish_num > 15:
+//             fish_num -= 5
+
+//     if 0 == fish_num:
+//         # something special
+//         rare_fish_options = [
+//             ":dolphin:",
+//             ":shark:",
+//             ":duck:",
+//             ":goose:",
+//             ":dodo:",
+//             ":flamingo:",
+//             ":penguin:",
+//             ":unicorn:",
+//             ":swan:",
+//             ":whale:",
+//             ":seal:",
+//             ":sheep:",
+//             ":sloth:",
+//             ":hippopotamus:",
+//         ]
+//         board.fish += 10
+//         fish_message = f"**Caught a rare fish!** {random.choice(rare_fish_options)}"
+//     elif fish_num < 16:
+//         fish_num = (fish_num + 1) // 2
+//         board.fish += fish_num
+//         fish_emoji_options = [":fish:", ":tropical_fish:", ":blowfish:", ":jellyfish:", ":shrimp:"]
+//         fish_weights = [8, 4, 2, 1, 2]
+//         fish_message = f"Caught {fish_num} fish! " + " ".join(
+//             random.choices(fish_emoji_options, weights=fish_weights, k=fish_num)
+//         )
+//     else:
+//         fish_num = (21 - fish_num) // 2
+
+//         if is_bumble(ctx.author.name):
+//             if randrange(0, 20) == 0:
+//                 # Sometimes Bumbles are so bad at fishing they debumblify
+//                 debumblify = True
+//                 fish_num = randrange(10, 20)
+//                 return "", None
+//             else:
+//                 # Bumbles that lose fish lose a lot of them
+//                 fish_num *= randrange(3, 10)
+
+//         board.fish -= fish_num
+//         fish_kind = "captured" if board.fish >= 0 else "future"
+//         fish_message = f"Accidentally let {fish_num} {fish_kind} fish sneak away :("
+//     fish_message += f"\nIn total, {board.fish} fish have been caught!"
+//     if random.randrange(0, 5) == 0:
+//         get_connection().execute_arbitrary_sql(
+//             """UPDATE boards SET fish=? WHERE board_id=? AND phase=?""",
+//             (board.fish, board.board_id, board.get_phase_and_year_string()),
+//         )
+
+//     if debumblify:
+//         temporary_bumbles.remove(ctx.author.name)
+//         fish_message = f"\n Your luck has run out! {fish_message}\nBumble is sad, you must once again prove your worth by Bumbling!"
+
+//     return fish_message, None
+
+// # @bot.command(hidden=True)
+// # async def bumble(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.bumble, ctx)
+
+
+// # @bot.command(hidden=True)
+// # async def fish(ctx: discord.ext.commands.Context) -> None:
+// #     await ctx.message.add_reaction("🐟")
+// #     await _handle_command(command.fish, ctx)
+
+
+// # @bot.command(hidden=True)
+// # async def phish(ctx: discord.ext.commands.Context) -> None:
+// #     await ctx.message.add_reaction("🐟")
+// #     await _handle_command(command.phish, ctx)
+
+
+// # @bot.command(hidden=True)
+// # async def cheat(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.cheat, ctx)
+
+
+// # @bot.command(hidden=True)
+// # async def advice(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.advice, ctx)
+
+
+// # @bot.command(hidden=True)
+// # async def botsay(ctx: discord.ext.commands.Context) -> None:
+// #     await command.botsay(ctx, manager)
+
+
+// # @bot.command(hidden=True)
+// # async def announce(ctx: discord.ext.commands.Context) -> None:
+// #     await command.announce(ctx, {bot.get_guild(server_id) for server_id in manager.list_servers()})
+
+
+// # @bot.command(
+// #     brief="Submits orders; there must be one and only one order per line.",
+// #     description="""Submits orders: 
+// #     There must be one and only one order per line.
+// #     A variety of keywords are supported: e.g. '-', '->', 'move', and 'm' are all supported for a move command.
+// #     Supplying the unit type is fine but not required: e.g. 'A Ghent -> Normandy' and 'Ghent -> Normandy' are the same
+// #     If anything in the command errors, we recommend resubmitting the whole order message.
+// #     *During Build phases only*, you have to specify multi-word provinces with underscores; e.g. Somali Basin would be Somali_Basin (we use a different parser during build phases)
+// #     If you would like to use something that is not currently supported please inform your GM and we can add it.""",
+// # )
+// # async def order(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.order, ctx)
+
+
+// # @bot.command(
+// #     brief="Removes orders for given units.",
+// #     description="Removes orders for given units (required for removing builds/disbands). "
+// #     "There must be one and only one order per line.",
+// # )
+// # async def remove_order(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.remove_order, ctx)
+
+
+// # @bot.command(
+// #     brief="Outputs your current submitted orders.",
+// #     description="Outputs your current submitted orders. "
+// #     "In the future we will support outputting a sample moves map of your orders.",
+// # )
+// # async def view_orders(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.view_orders, ctx)
+
+
+// # @bot.command(brief="Adjudicates the game and outputs the moves and results maps.")
+// # async def adjudicate(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.adjudicate, ctx)
+
+
+// # @bot.command(brief="Rolls back to the previous game state.")
+// # async def rollback(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.rollback, ctx)
+
+
+// # @bot.command(brief="Reloads the current board with what is in the DB")
+// # async def reload(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.reload, ctx)
+
+
+// # @bot.command(brief="Outputs the scoreboard.", description="Outputs the scoreboard.")
+// # async def scoreboard(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.get_scoreboard, ctx)
+
+
+// # @bot.command(
+// #     brief="Edits the game state and outputs the results map.",
+// #     description="""Edits the game state and outputs the results map. 
+// #     There must be one and only one command per line.
+// #     Note: you cannot edit immalleable map state (eg. province adjacency).
+// #     The following are the supported sub-commands:
+// #     * set_phase {spring, fall, winter}_{moves, retreats, builds}
+// #     * set_core <province_name> <player_name>
+// #     * set_half_core <province_name> <player_name>
+// #     * set_province_owner <province_name> <player_name>
+// #     * create_unit {A, F} <player_name> <province_name>
+// #     * create_dislodged_unit {A, F} <player_name> <province_name> <retreat_option1> <retreat_option2>...
+// #     * delete_unit <province_name>
+// #     * move_unit <province_name> <province_name>
+// #     * dislodge_unit <province_name> <retreat_option1> <retreat_option2>...
+// #     * make_units_claim_provinces {True|(False) - whether or not to claim SCs}""",
+// # )
+// # async def edit(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.edit, ctx)
+
+
+// # @bot.command(brief="Clears all players orders.")
+// # async def remove_all(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.remove_all, ctx)
+
+
+// # @bot.command(
+// #     brief="disables orders until .unlock_orders is run.",
+// #     description="""disables orders until .enable_orders is run.
+// #              Note: Currently does not persist after the bot is restarted""",
+// # )
+// # async def lock_orders(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.disable_orders, ctx)
+
+
+// # @bot.command(brief="re-enables orders")
+// # async def unlock_orders(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.enable_orders, ctx)
+
+
+// # @bot.command(brief="outputs information about the current game")
+// # async def info(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.info, ctx)
+
+
+// # @bot.command(brief="outputs information about a specific province")
+// # async def province_info(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.province_info, ctx)
+
+
+// # @bot.command(brief="outputs all provinces per owner")
+// # async def all_province_data(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.all_province_data, ctx)
+
+
+// # @bot.command(
+// #     brief="Create a game of Imp Dip and output the map.",
+// #     description="Create a game of Imp Dip and output the map. (there are no other variant options at this time)",
+// # )
+// # async def create_game(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.create_game, ctx)
+
+
+// # @bot.command(
+// #     brief="archives a category of the server",
+// #     description="Used after a game is done. Will make all channels in category viewable by all server members, but no messages allowed.)",
+// # )
+// # async def archive(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.archive, ctx)
+
+// # @bot.command(
+// #         brief="permanently deletes a game, cannot be undone"
+// # )
+// # async def delete_game(ctx: discord.ext.commands.Context) -> None:
+// #     await _handle_command(command.delete_game, ctx)
+
+
+// def phish(ctx: commands.Context, _: Manager) -> tuple[str, str | None]:
+//     message = "No! Phishing is bad!"
+//     if is_bumble(ctx.author.name):
+//         message = "Please provide your firstborn pet and your soul for a chance at winning your next game!"
+//     return message, None
+
+
+// def cheat(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     message = "Cheating is disabled for this user."
+//     author = ctx.message.author.name
+//     board = manager.get_board(ctx.guild.id)
+//     if is_bumble(author):
+//         sample = random.choice(
+//             [
+//                 f"It looks like {author} is getting coalitioned this turn :cry:",
+//                 f"{author} is talking about stabbing {random.choice(list(board.players)).name} again",
+//                 f"looks like he's throwing to {author}... shame",
+//                 "yeah",
+//                 "People in this game are not voiding enough",
+//                 f"I can't believe {author} is moving to {random.choice(list(board.provinces)).name}",
+//                 f"{author} has a bunch of invalid orders",
+//                 f"No one noticed that {author} overbuilt?",
+//                 f"{random.choice(list(board.players)).name} is in a perfect position to stab {author}",
+//                 ".bumble",
+//             ]
+//         )
+//         message = f'Here\'s a helpful message I stole from the spectator chat: \n"{sample}"'
+//     return message, None
+
+
+// def advice(ctx: commands.Context, _: Manager) -> tuple[str, str | None]:
+//     message = "You are not worthy of advice."
+//     if is_bumble(ctx.author.name):
+//         message = "Bumble suggests that you go fishing, although typically blasphemous, today is your lucky day!"
+//     elif randrange(0, 5) == 0:
+//         message = random.choice(
+//             [
+//                 "Bumble was surprised you asked him for advice and wasn't ready to give you any, maybe if you were a true follower...",
+//                 "Icecream demands that you void more and will not be giving any advice until sated.",
+//                 "Salt suggests that stabbing all of your neighbors is a good play in this particular situation.",
+//                 "Ezio points you to an ancient proverb: see dot take dot.",
+//                 "CaptainMeme advises balance of power play at this instance.",
+//                 "Ash Lael deems you a sufficiently apt liar, go use those skills!",
+//                 "Kwiksand suggests winning.",
+//                 "Ambrosius advises taking the opportunity you've been considering, for more will ensue.",
+//                 "The GMs suggest you input your orders so they don't need to hound you for them at the deadline.",
+//             ]
+//         )
+//     return message, None
+
+
+// @perms.gm("botsay")
+// async def botsay(ctx: commands.Context, _: Manager) -> None:
+//     # noinspection PyTypeChecker
+//     if len(ctx.message.channel_mentions) == 0:
+//         return
+//     channel = ctx.message.channel_mentions[0]
+//     content = ctx.message.content
+//     content = content.replace(".botsay", "").replace(channel.mention, "").strip()
+//     if len(content) == 0:
+//         return
+//     await ctx.message.add_reaction("👍")
+//     logger.info(f"{ctx.message.author.name} asked me to say '{content}' in {channel.name}")
+//     await channel.send(content)
+
+
+// async def announce(ctx: commands.Context, servers: set[Guild | None]) -> None:
+//     if not is_admin(ctx.message.author) and is_gm_channel(ctx.channel):
+//         return
+//     await ctx.message.add_reaction("👍")
+//     content = ctx.message.content.removeprefix(".announce").strip()
+//     logger.info(f"{ctx.message.author.name} sent announcement '{content}'")
+//     for server in servers:
+//         if server is None:
+//             continue
+//         admin_chat_channel = next(channel for channel in server.channels if is_gm_channel(channel))
+//         if admin_chat_channel is None:
+//             continue
+//         await admin_chat_channel.send(f"__Announcement__\n{ctx.message.author.display_name} says:\n{content}")
+
+
+// @perms.player("order")
+// def order(player: Player | None, ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+
+//     if player and not board.orders_enabled:
+//         return "Orders locked! If you think this is an error, contact a GM.", None
+
+//     return parse_order(ctx.message.content, player, board), None
+
+
+// @perms.player("remove orders")
+// def remove_order(player: Player | None, ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+
+//     if player and not board.orders_enabled:
+//         return "Orders locked! If you think this is an error, contact a GM.", None
+
+//     return parse_remove_order(ctx.message.content, player, board), None
+
+
+// @perms.player("view orders")
+// def view_orders(player: Player | None, ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     try:
+//         order_text = get_orders(manager.get_board(ctx.guild.id), player)
+//     except RuntimeError as err:
+//         logger.error(f"View_orders text failed in game with id: {ctx.guild.id}", exc_info=err)
+//         order_text = "view_orders text failed"
+//     if player is None:
+//         try:
+//             file_name = manager.draw_moves_map(ctx.guild.id, None)
+//         except Exception as err:
+//             logger.error(f"View_orders map failed in game with id: {ctx.guild.id}", exc_info=err)
+//             file_name = None
+//         return order_text, file_name
+
+//     else:
+//         # file_name = manager.draw_moves_map(ctx.guild.id, player)
+//         return order_text, None
+
+
+// @perms.gm("adjudicate")
+// def adjudicate(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     svg_file_name = manager.adjudicate(ctx.guild.id)
+//     return "Adjudication completed successfully.", svg_file_name
+
+
+// @perms.gm("rollback")
+// def rollback(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     return manager.rollback(ctx.guild.id)
+
+
+// @perms.gm("reload")
+// def reload(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     return manager.reload(ctx.guild.id)
+
+
+// @perms.gm("remove all orders")
+// def remove_all(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     for unit in board.units:
+//         unit.order = None
+
+//     database = get_connection()
+//     database.save_order_for_units(board, board.units)
+//     return "Successful", None
+
+
+// # @perms.gm("get scoreboard")
+// def get_scoreboard(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     response = ""
+//     for player in board.get_players_by_score():
+//         response += f"\n__{player.name}__: {len(player.centers)} ({'+' if len(player.centers) - len(player.units) >= 0 else ''}{len(player.centers) - len(player.units)})"
+//     return response, None
+
+
+// @perms.gm("edit")
+// def edit(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     return parse_edit_state(ctx.message.content, manager.get_board(ctx.guild.id))
+
+
+// @perms.gm("create a game")
+// def create_game(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     gametype = ctx.message.content.removeprefix(".create_game")
+//     if gametype == "":
+//         gametype = "impdip.json"
+//     else:
+//         gametype = gametype.removeprefix(" ") + ".json"
+//     return manager.create_game(ctx.guild.id, gametype), None
+
+
+// @perms.gm("unlock orders")
+// def enable_orders(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     board.orders_enabled = True
+//     return "Successful", None
+
+
+// @perms.gm("lock orders")
+// def disable_orders(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     board.orders_enabled = False
+//     return "Successful", None
+
+// @perms.gm("delete the game")
+// def delete_game(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     manager.total_delete(ctx.guild.id)
+//     return "Game deleted", None
+
+// def info(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     out = "Phase: " + str(board.phase) + "\nOrders are: " + ("Open" if board.orders_enabled else "Locked")
+//     return out, None
+
+
+// def province_info(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+//     province_name = ctx.message.content.removeprefix(".province_info ").strip()
+//     if not province_name:
+//         raise ValueError("Usage: .province_info <province>")
+//     province = board.get_location(province_name)
+//     if province is None:
+//         raise ValueError(f"Could not find province {province_name}")
+//     # fmt: off
+//     if isinstance(province, Province):
+//         out = f"Province: {province.name}\n" + \
+//             f"Type: {province.type.name}\n" + \
+//             f"Coasts: {len(province.coasts)}\n" + \
+//             f"Owner: {province.owner.name if province.owner else 'None'}\n" + \
+//             f"Unit: {(province.unit.player.name + ' ' + province.unit.unit_type.name) if province.unit else 'None'}\n" + \
+//             f"Center: {province.has_supply_center}\n" + \
+//             f"Core: {province.core.name if province.core else 'None'}\n" + \
+//             f"Half-Core: {province.half_core.name if province.half_core else 'None'}\n" + \
+//             f"Adjacent Provinces:\n- " + "\n- ".join(sorted([adjacent.name for adjacent in province.adjacent])) + "\n"
+//     else:
+//         out = f"""Province: {province.name}
+// Type: COAST
+// Adjacent Provinces:
+// - """ + "\n- ".join(sorted([adjacent.name for adjacent in province.adjacent_seas])) + "\n"
+//     # fmt: on
+//     return out, None
+
+
+// def all_province_data(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
+//     board = manager.get_board(ctx.guild.id)
+
+//     province_by_owner = defaultdict(list)
+//     for province in board.provinces:
+//         owner = province.owner
+//         if not owner:
+//             owner = "None"
+//         province_by_owner[owner].append(province.name)
+
+//     data = ""
+//     for owner, provinces in province_by_owner.items():
+//         data += f"{owner}: "
+//         for province in provinces:
+//             data += f"{province}, "
+//         data += "\n\n"
+
+//     return data, None
+
+
+// # needed due to async
+// from bot.utils import is_gm, is_gm_channel
+
+
+// async def archive(ctx: commands.Context, _: Manager) -> tuple[str, str | None]:
+
+//     if not is_gm(ctx.message.author):
+//         raise PermissionError(f"You cannot archive because you are not a GM.")
+
+//     if not is_gm_channel(ctx.channel):
+//         raise PermissionError(f"You cannot archive in a non-GM channel.")
+
+//     categories = [channel.category for channel in ctx.message.channel_mentions]
+//     if not categories:
+//         return "This channel is not part of a category.", None
+
+//     for category in categories:
+//         for channel in category.channels:
+//             overwrites = channel.overwrites
+
+//             # Remove all permissions except for everyone
+//             overwrites.clear()
+//             overwrites[ctx.guild.default_role] = PermissionOverwrite(read_messages=True, send_messages=False)
+
+//             # Apply the updated overwrites
+//             await channel.edit(overwrites=overwrites)
+
+//     return f"The following catagories have been archived: {' '.join([catagory.name for catagory in categories])}", None
+
+
+pub async fn run_bot(token: &str) {
+    // Set gateway intents, which decides what events the bot will be notified about
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            prefix_options: poise::PrefixFrameworkOptions {
+                prefix: Some(".".into()),
+                edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(std::time::Duration::from_secs(3600)))),
+                case_insensitive_commands: true,
+                ..Default::default()
+            },
+            pre_command: |ctx| {
+                Box::pin(async move {
+                    // TODO logger.debug(f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}'")
+
+                    // # mark the message as seen
+                    if let Context::Prefix(c) = ctx {
+                        c.msg.react(ctx, ReactionType::Unicode("👍".to_string())).await.expect("Failed to React");
+                    };
+                })
+            },
+            post_command: |_ctx| {
+                Box::pin(async move {
+                    // TODO logger.debug(f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}'")
+                    debug!("meow");
+                })
+            },
+            command_check: Some(|_ctx| {
+                Box::pin(async move {
+                    // TODO pass invocation data
+                    Ok(true)
+                })
+            }),
+
+            on_error: |error| {
+                Box::pin(async move {
+                    let ctx = error.ctx().expect("Failed to get context");
+                    if let Context::Prefix(c) = ctx {
+                        let user_id = ctx.cache().current_user().id;
+                        c.msg.react(ctx, ReactionType::Unicode("❌".to_string())).await.expect("Failed to React");
+                        c.msg.delete_reaction(ctx, Some(user_id), ReactionType::Unicode("👍".to_string())).await.expect("Failed to React");
+                    };
+
+                    ctx.reply(error.to_string()).await.expect("Failed to display error");
+                })
+            },
+            commands: vec![
+                help(),
+                ping(),
+                botsay()
+            ],
+            ..Default::default()
+        })
+        .setup(|ctx, _ready, framework| {
+            Box::pin(async move {
+                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                Ok(Data {})
+            })
+        })
+        .build();
+
+    // Create a new instance of the Client, logging in as a bot.
+    let client =
+        Client::builder(&token, intents).framework(framework).await;
+
+    // Start listening for events by starting a single shard
+    if let Err(why) = client.expect("Err creating client").start().await {
+        println!("Client error: {why:?}");
+    }
+}

@@ -1,0 +1,7 @@
+numpy
+scipy
+shapely
+lark
+lxml
+discord
+black
