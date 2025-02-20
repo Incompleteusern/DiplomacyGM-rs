@@ -1,23 +1,71 @@
-use std::collections::{btree_map::Keys, HashMap};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex}};
 
 use serenity::all::GuildId;
 
-use super::board::Board;
+use super::{board::Board, phase::Phase};
 
+//  Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database.
 pub struct Manager {
     // database: ,
-    _boards: HashMap<GuildId, Board>,
+    _boards: HashMap<GuildId, Mutex<Board>>,
 }
 
 impl Manager {
-    fn new() -> Manager {
-        todo!()
+    pub fn new() -> Manager {
+        //         self._database = database.get_connection()
+        //         self._boards: dict[int, Board] = self._database.get_boards()
+        //         # TODO: have multiple for each variant?
+        //         # do it like this so that the parser can cache data between board initilizations
+        Manager {
+            _boards: HashMap::new(),
+        }
     }
 
-    fn list_servers(&self) -> Vec<&GuildId> {
+    pub fn list_servers(&self) -> Vec<&GuildId> {
         self._boards.keys().collect()
     }
+
+    pub fn create_game(&mut self, server_id: &GuildId, gametype: String) -> String {
+        if self._boards.contains_key(server_id) {
+            panic!("todo actually do anyhow")
+//             raise RuntimeError("A game already exists in this server.")
+        }
+
+        // TODO logger.info(f"Creating new game in server {server_id}")s
+
+        let mut new_board = Board::new(
+            HashSet::new(),
+            HashSet::new(),
+            HashSet::new(),
+            Phase::SpringMoves, String::from("none")            
+        );
+
+        new_board.board_id = Some(server_id.clone());
+//         self._database.save_board(server_id, self._boards[server_id])
+        self._boards.insert(server_id.clone(), Mutex::new(new_board));
+        println!("{}", server_id.clone());
+        
+
+//         self._boards[server_id] = get_parser(gametype).parse()
+
+//         return f"{self._boards[server_id].data['name']} game created"
+        return format!("{} game created", "idk");
+
+    }
+
+    pub fn get_board(&self, server_id: GuildId) -> &Mutex<Board> {    
+        self._boards.get(&server_id).unwrap_or_else(|| panic!())
+    }
+
+    pub fn change_fish(&self, server_id: GuildId, amount: i64) -> i64 {
+        let mut board = self.get_board(server_id).lock().unwrap();
+        board.fish += amount;
+
+        board.fish
+    }
 }
+
+
 
 // import logging
 // import time
@@ -35,32 +83,6 @@ impl Manager {
 
 // class Manager:
 //     """Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database."""
-
-//     def __init__(self):
-//         self._database = database.get_connection()
-//         self._boards: dict[int, Board] = self._database.get_boards()
-//         # TODO: have multiple for each variant?
-//         # do it like this so that the parser can cache data between board initilizations
-
-//     def list_servers(self) -> set[int]:
-//         return set(self._boards.keys())
-
-//     def create_game(self, server_id: int, gametype: str = "impdip.json") -> str:
-//         if self._boards.get(server_id):
-//             raise RuntimeError("A game already exists in this server.")
-
-//         logger.info(f"Creating new game in server {server_id}")
-//         self._boards[server_id] = get_parser(gametype).parse()
-//         self._boards[server_id].board_id = server_id
-//         self._database.save_board(server_id, self._boards[server_id])
-
-//         return f"{self._boards[server_id].data['name']} game created"
-
-//     def get_board(self, server_id: int) -> Board:
-//         board = self._boards.get(server_id)
-//         if not board:
-//             raise RuntimeError("There is no existing game this this server.")
-//         return board
 
 //     def total_delete(self, server_id: int):
 //         self._database.total_delete(self._boards[server_id])

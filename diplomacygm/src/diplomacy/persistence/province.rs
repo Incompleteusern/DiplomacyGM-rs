@@ -1,4 +1,6 @@
-use super::player::Player;
+use std::{cell::RefCell, collections::HashSet, sync::Weak};
+
+use super::{player::Player, unit::Unit};
 
 pub trait Location {
     fn get_owner(&self) -> &Player;
@@ -19,57 +21,21 @@ pub enum ProvinceType {
 }
 
 pub struct Province {
-
-}
-
-// from __future__ import annotations
-
-// from abc import abstractmethod
-// from enum import Enum
-// from typing import TYPE_CHECKING
-
-// from shapely import Polygon, MultiPolygon
-
-// if TYPE_CHECKING:
-//     from diplomacy.persistence import player
-//     from diplomacy.persistence import unit
-
-
-// class Location:
-//     def __init__(
-//         self,
-//         name: str,
+    pub name: String,
+//         coordinates: Polygon | MultiPolygon,
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
-//     ):
-//         self.all_locs = set()
-//         self.all_rets = set()
-//         self.name: str = name
-//         self.primary_unit_coordinate: tuple[float, float] = primary_unit_coordinate
-//         self.retreat_unit_coordinate: tuple[float, float] = retreat_unit_coordinate
-//         if primary_unit_coordinate:
-//             self.all_locs: set[tuple[float, float]] = {primary_unit_coordinate}
-//         if retreat_unit_coordinate:
-//             self.all_rets: set[float[float, float]] = {retreat_unit_coordinate}
-
-//     @abstractmethod
-//     def get_owner(self) -> player.Player | None:
-//         pass
-
-//     @abstractmethod
-//     def get_unit(self) -> unit.Unit | None:
-//         pass
-
-//     def __str__(self):
-//         return self.name
-
+    adjacent: HashSet<Weak<Province>>,
+    has_supply_center: bool,
+//         coasts: set[Coast],
+    core: Option<Weak<Player>>,
+    owner: Option<Weak<Player>>,
+    local_unit: Option<RefCell<Unit>>
+}
 // class Province(Location):
 //     def __init__(
 //         self,
 //         name: str,
-//         coordinates: Polygon | MultiPolygon,
-//         primary_unit_coordinate: tuple[float, float],
-//         retreat_unit_coordinate: tuple[float, float],
 //         province_type: ProvinceType,
 //         has_supply_center: bool,
 //         adjacent: set[Province],
@@ -151,6 +117,50 @@ pub struct Province {
 //         for i, coast_set in enumerate(coast_sets):
 //             name = f"{self.name} coast"
 //             self.coasts.add(Coast(name, None, None, coast_set, self))
+
+
+
+// from __future__ import annotations
+
+// from abc import abstractmethod
+// from enum import Enum
+// from typing import TYPE_CHECKING
+
+// from shapely import Polygon, MultiPolygon
+
+// if TYPE_CHECKING:
+//     from diplomacy.persistence import player
+//     from diplomacy.persistence import unit
+
+
+// class Location:
+//     def __init__(
+//         self,
+//         name: str,
+//         primary_unit_coordinate: tuple[float, float],
+//         retreat_unit_coordinate: tuple[float, float],
+//     ):
+//         self.all_locs = set()
+//         self.all_rets = set()
+//         self.name: str = name
+//         self.primary_unit_coordinate: tuple[float, float] = primary_unit_coordinate
+//         self.retreat_unit_coordinate: tuple[float, float] = retreat_unit_coordinate
+//         if primary_unit_coordinate:
+//             self.all_locs: set[tuple[float, float]] = {primary_unit_coordinate}
+//         if retreat_unit_coordinate:
+//             self.all_rets: set[float[float, float]] = {retreat_unit_coordinate}
+
+//     @abstractmethod
+//     def get_owner(self) -> player.Player | None:
+//         pass
+
+//     @abstractmethod
+//     def get_unit(self) -> unit.Unit | None:
+//         pass
+
+//     def __str__(self):
+//         return self.name
+
 
 
 // class Coast(Location):

@@ -19,18 +19,21 @@
 
 // manager = Manager()
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use poise::samples::HelpConfiguration;
 use rand::seq::{IndexedRandom, SliceRandom};
 use serenity::{all::{CreateMessage, GatewayIntents, Mention, ReactionType}, Client};
-use tracing::{debug, info};
+use tracing::info;
 
-use crate::bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils::reply_if_slash};
+use crate::{bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils::reply_if_slash}, diplomacy::persistence::manager::{self, Manager}};
 
 use super::{config::is_bumble, utils::{react, unreact}};
 
-pub struct Data {} // User data, which is stored and accessible in all command invocations
+pub struct Data {
+    pub manager: RwLock<Manager>,
+} // User data, which is stored and accessible in all command invocations
+
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, Error>;
@@ -110,7 +113,7 @@ async fn ping(
 #[poise::command(
     slash_command,
     prefix_command,
-    category = "GM",
+    hide_in_help = true,
     check = "super::perms::gm_check",
 )]
 async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option<String>) -> Result<(), Error> {
@@ -133,6 +136,7 @@ async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option
 
 #[poise::command(
     prefix_command,
+    hide_in_help = true,
 )]
 async fn bumble(
     ctx: Context<'_>,
@@ -158,8 +162,7 @@ async fn bumble(
         _ => {}
     };
 
-    //     board = manager.get_board(ctx.guild.id)
-    //     board.fish -= 1
+    ctx.data().manager.read().unwrap().change_fish(ctx.guild_id().unwrap(), -1);
 
     ctx.say(word_of_bumble).await?;
 
@@ -168,6 +171,7 @@ async fn bumble(
 
 #[poise::command(
     prefix_command,
+    hide_in_help = true,
 )]
 pub async fn fish(
     ctx: PrefixContext<'_>
@@ -190,6 +194,7 @@ pub async fn fish(
     }
 
     let mut fish_message;
+    let fish_change;
 
     match fish_num {
         0 => {
@@ -210,12 +215,12 @@ pub async fn fish(
                 ":sloth:",
                 ":hippopotamus:",
             ];
-            // board.fish += 10
+            fish_change = 10;
             fish_message = format!("**Caught a rare fish!** {}", rare_fish_options.choose(&mut rand::rng()).unwrap());
         },
         1..16 => {
             fish_num = (fish_num + 1) / 2;
-            // board.fish += fish_num
+            fish_change = fish_num;
             let fish_emoji_options: [(&str, i32); 5] = [(":fish:", 8), (":tropical_fish:", 4), (":blowfish:", 2), (":jellyfish:", 1), (":shrimp:", 2)];
             fish_message = format!("Caught {} fish! ", fish_num);
             for _ in 0..fish_num {
@@ -237,13 +242,15 @@ pub async fn fish(
                 }
             }
     
-            // board.fish -= fish_num
+            fish_change = -fish_num;
             let fish_kind = "captured"; // if board.fish >= 0 else "future"
             fish_message = format!("Accidentally let {} {} fish sneak away :(", fish_num, fish_kind);
         }
     }
 
-    // fish_message += f"\nIn total, {board.fish} fish have been caught!"
+    let total_fish = ctx.data.manager.read().unwrap().change_fish(ctx.guild_id().unwrap(), fish_change);
+
+    fish_message += &format!("\nIn total, {} fish have been caught!", total_fish);
 //     if random.randrange(0, 5) == 0:
 //         get_connection().execute_arbitrary_sql(
 //             """UPDATE boards SET fish=? WHERE board_id=? AND phase=?""",
@@ -262,6 +269,7 @@ pub async fn fish(
 
 #[poise::command(
     prefix_command,
+    hide_in_help = true,
 )]
 async fn phish(
     ctx: PrefixContext<'_>
@@ -278,6 +286,7 @@ async fn phish(
 
 #[poise::command(
     prefix_command,
+    hide_in_help = true,
 )]
 async fn cheat(
     ctx: PrefixContext<'_>
@@ -313,6 +322,7 @@ async fn cheat(
 
 #[poise::command(
     prefix_command,
+    hide_in_help = true,
 )]
 async fn advice(
     ctx: PrefixContext<'_>
@@ -337,6 +347,31 @@ async fn advice(
     }
 
     ctx.say(message).await?;
+    Ok(())
+}
+
+/// Create a game of Imp Dip and output the map.
+/// 
+/// Create a game of Imp Dip and output the map. (there are no other variant options at this time)
+#[poise::command(
+    prefix_command, slash_command,
+    category = "GM",
+    check = "super::perms::gm_check",
+)]
+async fn create_game(
+    ctx: Context<'_>,
+    #[description = "Game type to create; None for impdip"]
+    #[rest]
+    command: Option<String>,
+
+) -> Result<(), Error> {
+    let gametype = match command {
+        Some(game) => game,
+        None => String::from("impdip.json"),
+    };
+
+    ctx.data().manager.write().unwrap().create_game(&ctx.guild_id().unwrap(), gametype);
+
     Ok(())
 }
 
@@ -452,13 +487,6 @@ async fn advice(
 
 
 // # @bot.command(
-// #     brief="Create a game of Imp Dip and output the map.",
-// #     description="Create a game of Imp Dip and output the map. (there are no other variant options at this time)",
-// # )
-// # async def create_game(ctx: discord.ext.commands.Context) -> None:
-// #     await _handle_command(command.create_game, ctx)
-
-// # @bot.command(
 // #     brief="archives a category of the server",
 // #     description="Used after a game is done. Will make all channels in category viewable by all server members, but no messages allowed.)",
 // # )
@@ -566,15 +594,6 @@ async fn advice(
 // def edit(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
 //     return parse_edit_state(ctx.message.content, manager.get_board(ctx.guild.id))
 
-
-// @perms.gm("create a game")
-// def create_game(ctx: commands.Context, manager: Manager) -> tuple[str, str | None]:
-//     gametype = ctx.message.content.removeprefix(".create_game")
-//     if gametype == "":
-//         gametype = "impdip.json"
-//     else:
-//         gametype = gametype.removeprefix(" ") + ".json"
-//     return manager.create_game(ctx.guild.id, gametype), None
 
 
 // @perms.gm("unlock orders")
@@ -698,6 +717,8 @@ pub async fn run_bot(token: String) {
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
 
+    let manager = Manager::new();
+
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             prefix_options: poise::PrefixFrameworkOptions {
@@ -736,14 +757,15 @@ pub async fn run_bot(token: String) {
                 fish(),
                 phish(),
                 cheat(),
-                advice()
+                advice(),
+                create_game()
             ],
             ..Default::default()
         })
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {})
+                Ok(Data { manager: RwLock::new(manager) })
             })
         })
         .build();

@@ -119,11 +119,8 @@ pub async fn reply_if_slash(ctx: Context<'_>, s: impl Into<String>) -> Result<()
     Ok(())
 }
 
-pub async fn react(ctx: PrefixContext<'_>, emoji: char) -> Result<(), Error> {
-    println!("reacting with {}", emoji);
-    
+pub async fn react(ctx: PrefixContext<'_>, emoji: char) -> Result<(), Error> {    
     ctx.msg.react(ctx, ReactionType::Unicode(String::from(emoji))).await.expect("Failed to React");
-    println!("done reacting with {}", emoji);
 
     Ok(())
 }

@@ -1,12 +1,12 @@
-use std::{collections::HashSet, sync::{Arc, Weak}};
+use std::{collections::HashSet, sync::Weak};
 
 use super::{order::PlayerOrder, province::Province, unit::Unit};
 
 pub struct Player {
-    name: String,
-    color: String,
-    vscc: usize,
-    iscc: usize,
+    pub name: String,
+    pub color: String,
+    pub vscc: usize,
+    pub iscc: usize,
     centers: HashSet<Weak<Province>>,
     units: HashSet<Weak<Unit>>,
     build_orders: HashSet<PlayerOrder>

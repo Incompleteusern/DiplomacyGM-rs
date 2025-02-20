@@ -7,9 +7,49 @@
 
 // logger = logging.getLogger(__name__)
 
-pub struct Board {
+use std::{cell::RefCell, collections::HashSet};
 
+use serenity::all::GuildId;
+
+use super::{phase::Phase, player::Player, province::Province, unit::Unit};
+
+// This is terrible but each board's contents is always behind a mutex in Manager.
+unsafe impl Send for Board {}
+
+pub struct Board {
+    players: HashSet<Player>,
+    provinces: HashSet<Province>,
+    units: HashSet<RefCell<Unit>>,
+    phase: Phase,
+    year: usize,
+    // TODO this is sad
+    pub board_id: Option<GuildId>,
+    pub fish: i64,
+    orders_enabled: bool,
+    // data: todo!(),
+    datafile: String
 }
+
+impl Board {
+    pub fn new(players: HashSet<Player>,
+        provinces: HashSet<Province>,
+        units: HashSet<RefCell<Unit>>,
+        phase: Phase,
+        // data: todo!(),
+        datafile: String) -> Board {
+        Board {
+            players,
+            provinces,
+            units,
+            phase,
+            year: 0,
+            board_id: None,
+            fish: 0,
+            orders_enabled: true,
+            datafile: datafile
+        }
+    }
+
 
 // class Board:
 //     def __init__(
@@ -26,18 +66,36 @@ pub struct Board {
 //         self.data = data
 //         self.datafile = datafile
 
-//     # TODO: we could have this as a dict ready on the variant
-//     def get_player(self, name: str) -> Player:
-//         # we ignore capitalization because this is primarily used for user input
-//         return next((player for player in self.players if player.name.lower() == name.lower()), None)
+    // TODO: we could have this as a dict ready on the variant
+    fn get_player(&self, name: &str) -> Option<&Player> {
+        // we ignore capitalization because this is primarily used for user input
 
-//     def get_players_by_score(self) -> list[Player]:
-//         return sorted(self.players, key=lambda sort_player: sort_player.score(), reverse=True)
+        for player in self.players.iter() {
+            if player.name.to_lowercase() == name.to_lowercase() {
+                return Some(player)
+            }
+        }
 
-//     # TODO: we could have this as a dict ready on the variant
-//     def get_province(self, name: str) -> Province:
-//         # we ignore capitalization because this is primarily used for user input
-//         return next((province for province in self.provinces if province.name.lower() == name.lower()), None)
+        None
+    }
+
+    fn get_players_by_score(&self) -> Vec<Player> {
+        todo!()
+    }
+
+
+    // TODO: we could have this as a dict ready on the variant
+    fn get_province(&self, name: &str) -> Option<&Province> {
+        // we ignore capitalization because this is primarily used for user input
+
+        for province in self.provinces.iter() {
+            if province.name.to_lowercase() == name.to_lowercase() {
+                return Some(province)
+            }
+        }
+
+        None
+    }
 
 //     def get_province_and_coast(self, name: str) -> tuple[Province, Coast | None]:
 //         # TODO: (BETA) we build this everywhere, let's just have one live on the Board on init
@@ -145,3 +203,4 @@ pub struct Board {
 //             unit.province.dislodged_unit = None
 //             unit.player.units.remove(unit)
 //             self.units.remove(unit)
+}
