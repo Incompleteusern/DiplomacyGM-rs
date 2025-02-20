@@ -44,13 +44,13 @@
 
 use tracing::info;
 
-use super::{bot::{Context, Error}, config::{is_gm_category, is_gm_channel_name, is_gm_role}};
+use super::{bot::{Context, Error, PrefixContext}, config::{is_gm_category, is_gm_channel_name, is_gm_role}};
 
 
 use std::{fs::File, io::{self, Read, Write}, path::Path};
 
 use poise::CreateReply;
-use serenity::all::CreateAttachment;
+use serenity::all::{CreateAttachment, ReactionType};
 use zip::write::SimpleFileOptions;
 
 pub fn sanitize_apostrophes(s: String) -> String {
@@ -112,9 +112,22 @@ pub async fn send_response(mut response: String, file: Option<&Path>, ctx: Conte
 }
 
 pub async fn reply_if_slash(ctx: Context<'_>, s: impl Into<String>) -> Result<(), Error> {
-    if let Context::Prefix(_) = ctx {
+    if let Context::Application(_) = ctx {
         ctx.send(CreateReply::default().content(s).ephemeral(true)).await?;
     }
+
+    Ok(())
+}
+
+pub async fn react(ctx: PrefixContext<'_>, emoji: char) -> Result<(), Error> {
+    ctx.msg.react(ctx, ReactionType::Unicode(String::from(emoji))).await.expect("Failed to React");
+
+    Ok(())
+}
+
+pub async fn unreact(ctx: PrefixContext<'_>, emoji: char) -> Result<(), Error> {
+    let user_id = ctx.cache().current_user().id;
+    ctx.msg.delete_reaction(ctx, Some(user_id), ReactionType::Unicode(String::from(emoji))).await.expect("Failed to Unreact");
 
     Ok(())
 }

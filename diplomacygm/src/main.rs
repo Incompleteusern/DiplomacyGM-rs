@@ -1,4 +1,4 @@
-// TODO use std::env;
+use std::env;
 
 use bot::bot::run_bot;
 
@@ -25,7 +25,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Login with a bot token from the environment
-    let token = ""; // env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
     run_bot(token).await;
 }
