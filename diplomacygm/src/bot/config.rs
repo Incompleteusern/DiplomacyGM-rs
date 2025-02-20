@@ -1,6 +1,4 @@
-use std::{collections::HashSet, sync::LazyLock};
-
-use serenity::futures::lock::Mutex;
+use std::{collections::HashSet, sync::{LazyLock, Mutex}};
 
 fn is_member(string: &str, group: &[&str]) -> bool {
     group.contains(&string)
@@ -62,14 +60,14 @@ pub fn _is_player_category(category: &str) -> bool {
 // Temporary bumbleship holds until the server restarts or until you fish too much
 static TEMPORARY_BUMBLES: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
-pub async fn is_bumble(name: &str) -> bool {
-    return name == "_bumble" || TEMPORARY_BUMBLES.lock().await.contains(name)
+pub fn is_bumble(name: &str) -> bool {
+    return name == "_bumble" || TEMPORARY_BUMBLES.lock().unwrap().contains(name)
 }
 
-pub async fn add_temporary_bumble(name: &str) {
-    TEMPORARY_BUMBLES.lock().await.insert(name.to_string());
+pub fn add_temporary_bumble(name: &str) {
+    TEMPORARY_BUMBLES.lock().unwrap().insert(name.to_string());
 }
 
-pub async fn remove_temporary_bumble(name: &str) {
-    TEMPORARY_BUMBLES.lock().await.remove(name);
+pub fn remove_temporary_bumble(name: &str) {
+    TEMPORARY_BUMBLES.lock().unwrap().remove(name);
 }

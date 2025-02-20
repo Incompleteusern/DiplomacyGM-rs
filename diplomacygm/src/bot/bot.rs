@@ -35,6 +35,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 pub type PrefixContext<'a> = poise::PrefixContext<'a, Data, Error>;
 
+// TODO 
 // # async def _handle_command(
 // #     function: Callable[[commands.Context, Manager], tuple[str, str | None]],
 // #     ctx: discord.ext.commands.Context,
@@ -102,7 +103,7 @@ async fn ping(
         response = format!("{} {} {}", name, PING_TEXT_CHOICES.choose(&mut rand::rng()).unwrap(), content);        
     }
 
-    ctx.reply(response).await?;
+    ctx.say(response).await?;
     Ok(())
 }
 
@@ -110,7 +111,7 @@ async fn ping(
     slash_command,
     prefix_command,
     category = "GM",
-    check = "super::perms::gm",
+    check = "super::perms::gm_check",
 )]
 async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option<String>) -> Result<(), Error> {
     if let Some(Mention::Channel(channel_id)) = mention {
@@ -121,7 +122,7 @@ async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option
             info!("{} asked me to say '{}' in {}", ctx.author(), content, channel_id.name(ctx).await.unwrap())    
         }
     } else {
-        ctx.reply("No channel mention in message").await?;
+        ctx.say("No channel mention in message").await?;
         return Ok(());
     }
 
@@ -142,14 +143,14 @@ async fn bumble(
 
     let author_name = ctx.author().name.as_str();
 
-    if is_bumble(author_name).await && rand::random_range(0..10) == 0 {
+    if is_bumble(author_name) && rand::random_range(0..10) == 0 {
         word_of_bumble = String::from("bumble");
     }
 
     match word_of_bumble.as_str() {
-        "bum" => {
+        "bumble" => {
             word_of_bumble = String::from("You are the chosen bumble");
-            add_temporary_bumble(author_name).await;
+            add_temporary_bumble(author_name);
         },
         "elbmub" => {
             word_of_bumble = String::from("elbmub nesohc eht era uoY");
@@ -160,7 +161,7 @@ async fn bumble(
     //     board = manager.get_board(ctx.guild.id)
     //     board.fish -= 1
 
-    ctx.reply(word_of_bumble).await?;
+    ctx.say(word_of_bumble).await?;
 
     Ok(())
 }
@@ -169,13 +170,14 @@ async fn bumble(
     prefix_command,
 )]
 pub async fn fish(
-    ctx: Context<'_>
+    ctx: PrefixContext<'_>
 ) -> Result<(), Error> {
 //  board = manager.get_board(ctx.guild.id)
+
     let mut fish_num = rand::random_range(0..20);
     let mut debumblify = false;
     let author_name = ctx.author().name.as_str();
-    let is_bumble = is_bumble(author_name).await;
+    let is_bumble = is_bumble(author_name);
 
     if is_bumble && rand::random_range(0..10) == 0 {
         // Bumbles are good fishers
@@ -249,11 +251,11 @@ pub async fn fish(
 //         )
 
     if debumblify {
-        remove_temporary_bumble(author_name).await;
+        remove_temporary_bumble(author_name);
         fish_message = format!("Your luck has run out! {}\nBumble is sad, you must once again prove your worth by Bumbling!", fish_message);
     }
 
-    ctx.reply(fish_message).await?;
+    ctx.say(fish_message).await?;
 
     Ok(())
 }
@@ -265,13 +267,12 @@ async fn phish(
     ctx: PrefixContext<'_>
 ) -> Result<(), Error> {
     let mut message = "No! Phishing is bad!";
-    react(ctx, '🐟').await?;
 
-    if is_bumble(ctx.author().name.as_str()).await {
+    if is_bumble(ctx.author().name.as_str()) {
         message = "Please provide your firstborn pet and your soul for a chance at winning your next game!";
     }
 
-    ctx.reply(message).await?;
+    ctx.say(message).await?;
     Ok(())
 }
 
@@ -286,7 +287,7 @@ async fn cheat(
     let nick_name = ctx.author().nick_in(ctx, ctx.guild_id().unwrap()).await.unwrap_or(author_name.to_string());
 
     // TODO board = manager.get_board(ctx.guild.id)
-    if true { // is_bumble(author_name).await
+    if is_bumble(author_name) {
         let random_player = "todo";
         let random_province = "todo";
         let sources = [
@@ -306,20 +307,38 @@ async fn cheat(
         message = format!("Here\'s a helpful message I stole from the spectator chat: \n\"{}\"", sample);
     }
 
-    ctx.reply(message).await?;
+    ctx.say(message).await?;
     Ok(())
 }
 
+#[poise::command(
+    prefix_command,
+)]
+async fn advice(
+    ctx: PrefixContext<'_>
+) -> Result<(), Error> {
+    let mut message = "You are not worthy of advice.";
 
-// # @bot.command(hidden=True)
-// # async def advice(ctx: discord.ext.commands.Context) -> None:
-// #     await _handle_command(command.advice, ctx)
+    if is_bumble(ctx.author().name.as_str()) {
+        message = "Bumble suggests that you go fishing, although typically blasphemous, today is your lucky day!";
+    } else if rand::random_range(0..5) == 0 {
+        let advices = [
+            "Bumble was surprised you asked him for advice and wasn't ready to give you any, maybe if you were a true follower...",
+            "Icecream demands that you void more and will not be giving any advice until sated.",
+            "Salt suggests that stabbing all of your neighbors is a good play in this particular situation.",
+            "Ezio points you to an ancient proverb: see dot take dot.",
+            "CaptainMeme advises balance of power play at this instance.",
+            "Ash Lael deems you a sufficiently apt liar, go use those skills!",
+            "Kwiksand suggests winning.",
+            "Ambrosius advises taking the opportunity you've been considering, for more will ensue.",
+            "The GMs suggest you input your orders so they don't need to hound you for them at the deadline.",
+        ];
+        message = advices.choose(&mut rand::rng()).unwrap();
+    }
 
-
-// # @bot.command(hidden=True)
-// # async def botsay(ctx: discord.ext.commands.Context) -> None:
-// #     await command.botsay(ctx, manager)
-
+    ctx.say(message).await?;
+    Ok(())
+}
 
 // # @bot.command(hidden=True)
 // # async def announce(ctx: discord.ext.commands.Context) -> None:
@@ -403,7 +422,6 @@ async fn cheat(
 // # async def remove_all(ctx: discord.ext.commands.Context) -> None:
 // #     await _handle_command(command.remove_all, ctx)
 
-
 // # @bot.command(
 // #     brief="disables orders until .unlock_orders is run.",
 // #     description="""disables orders until .enable_orders is run.
@@ -440,7 +458,6 @@ async fn cheat(
 // # async def create_game(ctx: discord.ext.commands.Context) -> None:
 // #     await _handle_command(command.create_game, ctx)
 
-
 // # @bot.command(
 // #     brief="archives a category of the server",
 // #     description="Used after a game is done. Will make all channels in category viewable by all server members, but no messages allowed.)",
@@ -453,35 +470,6 @@ async fn cheat(
 // # )
 // # async def delete_game(ctx: discord.ext.commands.Context) -> None:
 // #     await _handle_command(command.delete_game, ctx)
-
-
-// def phish(ctx: commands.Context, _: Manager) -> tuple[str, str | None]:
-//     message = "No! Phishing is bad!"
-//     if is_bumble(ctx.author.name):
-//         message = "Please provide your firstborn pet and your soul for a chance at winning your next game!"
-//     return message, None
-
-
-
-// def advice(ctx: commands.Context, _: Manager) -> tuple[str, str | None]:
-//     message = "You are not worthy of advice."
-//     if is_bumble(ctx.author.name):
-//         message = "Bumble suggests that you go fishing, although typically blasphemous, today is your lucky day!"
-//     elif randrange(0, 5) == 0:
-//         message = random.choice(
-//             [
-//                 "Bumble was surprised you asked him for advice and wasn't ready to give you any, maybe if you were a true follower...",
-//                 "Icecream demands that you void more and will not be giving any advice until sated.",
-//                 "Salt suggests that stabbing all of your neighbors is a good play in this particular situation.",
-//                 "Ezio points you to an ancient proverb: see dot take dot.",
-//                 "CaptainMeme advises balance of power play at this instance.",
-//                 "Ash Lael deems you a sufficiently apt liar, go use those skills!",
-//                 "Kwiksand suggests winning.",
-//                 "Ambrosius advises taking the opportunity you've been considering, for more will ensue.",
-//                 "The GMs suggest you input your orders so they don't need to hound you for them at the deadline.",
-//             ]
-//         )
-//     return message, None
 
 // async def announce(ctx: commands.Context, servers: set[Guild | None]) -> None:
 //     if not is_admin(ctx.message.author) and is_gm_channel(ctx.channel):
@@ -690,6 +678,19 @@ async fn cheat(
 
 //     return f"The following catagories have been archived: {' '.join([catagory.name for catagory in categories])}", None
 
+async fn pre_command(ctx: Context<'_>) {
+    // TODO logger.debug(f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}'")
+
+    // # mark the message as seen
+    if let Context::Prefix(c) = ctx {
+        let name = ctx.invoked_command_name();
+        if name == "fish" || name == "phish" {
+            c.msg.react(ctx, ReactionType::Unicode(String::from("🐟"))).await.expect("Failed to React");
+        } else {
+            c.msg.react(ctx, ReactionType::Unicode(String::from("👍"))).await.expect("Failed to React");
+        }
+    };
+}
 
 pub async fn run_bot(token: String) {
     // Set gateway intents, which decides what events the bot will be notified about
@@ -705,20 +706,10 @@ pub async fn run_bot(token: String) {
                 case_insensitive_commands: true,
                 ..Default::default()
             },
-            pre_command: |ctx| {
-                Box::pin(async move {
-                    // TODO logger.debug(f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}'")
-
-                    // # mark the message as seen
-                    if let Context::Prefix(c) = ctx {
-                        c.msg.react(ctx, ReactionType::Unicode(String::from("👍"))).await.expect("Failed to React");
-                    };
-                })
-            },
+            pre_command: |ctx| Box::pin(pre_command(ctx)),
             post_command: |_ctx| {
                 Box::pin(async move {
                     // TODO logger.debug(f"[{ctx.guild.name}][#{ctx.channel.name}]({ctx.message.author.name}) - '{ctx.message.content}'")
-                    debug!("meow");
                 })
             },
             command_check: Some(|_ctx| {
@@ -727,16 +718,14 @@ pub async fn run_bot(token: String) {
                     Ok(true)
                 })
             }),
-
             on_error: |error| {
                 Box::pin(async move {
-                    let ctx = error.ctx().expect("Failed to get context");
-                    if let Context::Prefix(c) = ctx {
+                    if let Some(Context::Prefix(c)) = error.ctx() {
                         let _ = react(c, '❌').await;
                         let _ = unreact(c, '👍').await;
-                    };
 
-                    ctx.reply(error.to_string()).await.expect("Failed to display error");
+                        c.say(error.to_string()).await.expect("Failed to display error");
+                    };
                 })
             },
             commands: vec![
@@ -746,7 +735,8 @@ pub async fn run_bot(token: String) {
                 bumble(),
                 fish(),
                 phish(),
-                cheat()
+                cheat(),
+                advice()
             ],
             ..Default::default()
         })

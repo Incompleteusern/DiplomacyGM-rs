@@ -1,23 +1,10 @@
-use std::env;
+use std::{collections::HashSet, env};
 
 use bot::bot::run_bot;
+use diplomacy::persistence::player::Player;
 
 mod bot;
-
-
-
-// struct Handler;
-
-// #[async_trait]
-// impl EventHandler for Handler {
-//     async fn message(&self, ctx: Context, msg: Message) {
-//         if msg.content == "!ping" {
-//             if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-//                 println!("Error sending message: {why:?}");
-//             }
-//         }
-//     }
-// }
+mod diplomacy;
 
 
 #[tokio::main(flavor = "multi_thread")]
@@ -26,6 +13,8 @@ async fn main() {
 
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+
+    let player = Player::new(String::from("e"), String::from("e"), 0, 0, HashSet::new(), HashSet::new());
 
     run_bot(token).await;
 }

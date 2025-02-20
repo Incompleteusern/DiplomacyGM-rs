@@ -44,17 +44,17 @@ use tracing::debug;
 
 use super::{bot::{Context, Error}, utils::{is_gm, is_gm_channel}};
 
-pub async fn gm(ctx: Context<'_>) -> Result<bool, Error> {
+pub async fn gm_check(ctx: Context<'_>) -> Result<bool, Error> {
     if !is_gm(ctx).await {
         debug!("not gm");
         return Ok(false);
-        // (f"You cannot run this command because you are not a GM."))
+        // TODO (f"You cannot run this command because you are not a GM."))
     }
 
     if !is_gm_channel(ctx).await {
         debug!("not gm channel");
         return Ok(false);
-        // (f"You cannot run this command in a non-GM channel.")
+        // TODO (f"You cannot run this command in a non-GM channel.")
     }
 
     Ok(true)
