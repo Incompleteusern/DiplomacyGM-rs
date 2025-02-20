@@ -15,6 +15,7 @@ __pycache__
 *.zip
 
 /diplomacygm/target
+/diplomacygm/assets
 /bot
 /diplomacy
 /test

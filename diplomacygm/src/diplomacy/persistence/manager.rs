@@ -2,6 +2,8 @@ use std::{collections::{HashMap, HashSet}, sync::{Mutex}};
 
 use serenity::all::GuildId;
 
+use crate::diplomacy::map_parser::vector::vector::Parser;
+
 use super::{board::Board, phase::Phase};
 
 //  Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database.
@@ -33,6 +35,8 @@ impl Manager {
 
         // TODO logger.info(f"Creating new game in server {server_id}")s
 
+        Parser::new(gametype);
+
         let mut new_board = Board::new(
             HashSet::new(),
             HashSet::new(),
@@ -46,7 +50,7 @@ impl Manager {
         println!("{}", server_id.clone());
         
 
-//         self._boards[server_id] = get_parser(gametype).parse()
+        // self._boards[server_id] = get_parser(gametype).parse()
 
 //         return f"{self._boards[server_id].data['name']} game created"
         return format!("{} game created", "idk");

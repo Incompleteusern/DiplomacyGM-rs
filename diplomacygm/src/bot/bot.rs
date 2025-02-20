@@ -367,7 +367,7 @@ async fn create_game(
 ) -> Result<(), Error> {
     let gametype = match command {
         Some(game) => game,
-        None => String::from("impdip.json"),
+        None => String::from("impdip1.1.json"),
     };
 
     ctx.data().manager.write().unwrap().create_game(&ctx.guild_id().unwrap(), gametype);
