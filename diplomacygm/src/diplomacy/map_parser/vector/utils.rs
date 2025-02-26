@@ -1,41 +1,63 @@
-// import numpy as np
 
-// from xml.etree.ElementTree import Element, ElementTree
 
-// from diplomacy.map_parser.vector.transform import Transform, EmptyTransform, get_transform
-// from diplomacy.persistence.player import Player
-// from diplomacy.persistence.unit import UnitType
-// import logging
+const NAMESPACE_INKSCAPE: &str = "{http://www.inkscape.org/namespaces/inkscape}";
+const NAMESPACE_SODIPODI: &str = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd";
+const NAMESPACE_SVG: &str = "http://www.w3.org/2000/svg";
+const INKSPACE_LABEL: &str = "inkscape:label";
 
 // logger = logging.getLogger(__name__)
 
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
+
+use quick_xml::{events::{BytesStart, BytesText}, name::QName};
 use resvg::usvg::{Group, Node};
 use serde_json::Value;
 
-pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
-     data.get(string).expect(format!("Expected \'{}\' in json", string).as_str()).as_str().expect(format!("Expected \'{}\' as string", string).as_str())
+use crate::diplomacy::persistence::player::PlayerInfo;
+
+pub fn get_attribute<'a>(e: &'a BytesStart, id: &str) -> Option<Cow<'a, str>> {
+    e.try_get_attribute(id).expect(format!("Failed to get attribute \'{}\' in svg", id).as_str())
+        .map(|f| f.unescape_value().expect("Failed to unescape value in svg"))    
 }
 
-pub fn get_svg_element(svg_root: &Group, element_id: &str) -> Option<Group> {
-    for element in svg_root.children().iter() {
-        if let Node::Group(g) = element {
-            println!("{}", g.id());
-            g.
-            if g.id() == element_id {
-                return Some(*g.clone());
-            }
-        } else {
-            println!("fuck {:?}", element);
+pub fn get_id<'a>(e: &'a BytesStart) -> Cow<'a, str> {
+    get_attribute(e, "id").unwrap()
+}
+
+pub fn get_inkspace_label<'a>(e: &'a BytesStart) -> Cow<'a, str> {
+    // println!("{:?}", e);
+    // for a in e.attributes() {
+    //     println!("({:?})", a.unwrap().key)
+    // }
+    get_attribute(e, INKSPACE_LABEL).unwrap()
+}
+
+pub fn get_fill_color(style: &str) -> Option<&str> {
+    for s in style.split(";") {
+        let potential_color = s.strip_prefix("fill:#");
+        if potential_color.is_some() {
+            return potential_color;
         }
     }
 
-    println!("meow");
-    return None;    
+    return None
+}
 
-    // try:
-    //     return svg_root.xpath(f'//*[@id="{element_id}"]')[0]
-    // except:
-    //     logger.error(f"{element_id} isn't contained in svg_root")
+pub fn get_player(e: &BytesStart, color_to_player: &HashMap<String, Option<Arc<PlayerInfo>>>) -> Option<Arc<PlayerInfo>> {
+    let style_attribute = get_attribute(e, "style")?;
+    let fill_color = get_fill_color(&style_attribute)?;
+    color_to_player.get(fill_color)?.clone()
+}
+
+
+
+// def get_player(element: Element, color_to_player: dict[str, Player]) -> Player:
+//     return color_to_player[get_element_color(element)]
+
+
+
+pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
+     data.get(string).expect(format!("Expected \'{}\' in json", string).as_str()).as_str().expect(format!("Expected \'{}\' as string", string).as_str())
 }
 
 // def get_element_color(element: Element) -> str:

@@ -1,4 +1,5 @@
-use std::{cell::RefCell, collections::HashSet, sync::Arc};
+
+use std::sync::Arc;
 
 use super::{player::{Player, PlayerInfo}, unit::Unit};
 
@@ -24,28 +25,34 @@ impl Location {
     }
 }
 
+#[derive(Debug)]
 pub enum ProvinceType {
     LAND,
     ISLAND,
     SEA
 }
 
+
 // TODO make sure when dropping that all adjacencies are cleared
+#[derive(Debug)]
 pub struct ProvinceInfo {
     pub name: String,
-    pub adjacent: HashSet<Arc<ProvinceInfo>>,
-    has_supply_center: bool,
-}
-
-pub struct Province {
-    pub info: ProvinceInfo,
+    pub province_type: ProvinceType,
+    pub adjacent: Vec<Arc<ProvinceInfo>>,
+    pub has_supply_center: bool,
+    pub initial_owner: Option<Arc<PlayerInfo>>,
+    pub local_unit: Option<Unit>
 //         coordinates: Polygon | MultiPolygon,
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
 //         coasts: set[Coast],
+}
+
+pub struct Province {
+    pub info: ProvinceInfo,
     core: Option<Arc<PlayerInfo>>,
     owner: Option<Arc<PlayerInfo>>,
-    local_unit: Option<RefCell<Unit>>
+    local_unit: Option<Unit>
 }
 // class Province(Location):
 //     def __init__(

@@ -823,3 +823,39 @@ class Mapper:
 
         scale = pull / distance
         return cx + dx * scale, cy + dy * scale
+
+        // let mut options = Options::default();
+        // options.dpi = 200.0;
+        // options.fontdb_mut().load_system_fonts();
+
+        // let svg_tree = usvg::Tree::from_str(fs::read_to_string(&svg_path).expect("Failed to read file.").as_str(), &options).unwrap();
+        // let svg_root = svg_tree.root();
+
+        // println!("{}", layers);
+
+        // let land_layer = get_svg_element(&svg_root, get_json_string(layers, "land_layer")).unwrap();
+        // let island_layer = get_svg_element(&svg_root, get_json_string(layers, "island_borders")).unwrap();
+        // let island_fill_layer = get_svg_element(&svg_root, get_json_string(layers, "island_fill_layer")).unwrap();
+        // let sea_layer = get_svg_element(&svg_root, get_json_string(layers, "sea_borders")).unwrap();
+        // let names_layer = get_svg_element(&svg_root, get_json_string(layers, "province_names")).unwrap();
+        // let centers_layer = get_svg_element(&svg_root, get_json_string(layers, "supply_center_icons")).unwrap();
+
+        // let units_layer = {
+        //     if let Some(value) = layers.get("detect_starting_units") {
+        //         Some(get_svg_element(&svg_root, get_json_string(layers, "starting_units")).unwrap())
+        //     } else { 
+        //         None
+        //     }
+        // };
+
+        // let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
+        // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
+        // let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
+        // let phantom_retreat_fleets_layer: Group = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
+
+        // let pixmap_size = svg_root.size().to_int_size();
+
+        // let mut pixmap = Pixmap::new(2*pixmap_size.width(), 2*pixmap_size.height()).unwrap();
+        // resvg::render(&svg_root, usvg::Transform::default().pre_scale(2.0, 2.0), &mut pixmap.as_mut());
+        // svg_path.set_extension("png");
+        // pixmap.save_png(svg_path).unwrap();

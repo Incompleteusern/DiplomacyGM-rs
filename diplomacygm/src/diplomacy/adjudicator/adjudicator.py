@@ -299,8 +299,8 @@ class RetreatsAdjudicator(Adjudicator):
             if unit != unit.province.dislodged_unit:
                 continue
 
-            if isinstance(unit.order, RetreatMove) and unit.order.destination in unit.retreat_options:
-                destination_province = get_base_province_from_location(unit.order.destination)
+            destination_province = get_base_province_from_location(unit.order.destination)
+            if isinstance(unit.order, RetreatMove) and destination_province in unit.retreat_options:
                 if destination_province.name not in retreats_by_destination:
                     retreats_by_destination[destination_province.name] = set()
                 retreats_by_destination[destination_province.name].add(unit)
@@ -553,10 +553,11 @@ class MovesAdjudicator(Adjudicator):
             # Resolution is arbitrary for holds; they don't do anything
             return Resolution.SUCCEEDS
         elif order.type == OrderType.CORE or order.type == OrderType.SUPPORT:
-            # Both these orders fail if attacked by another nation, even if that order isn't successful
+            # Both these orders fail if attacked by nation, even if that order isn't successful
             moves_here = self.moves_by_destination.get(order.current_province.name, set()) - {order}
             for move_here in moves_here:
-                if move_here.country == order.country:
+                # coring should fail even if the attack comes from the same nation
+                if move_here.country == order.country and order.type == OrderType.SUPPORT:
                     continue
                 if not move_here.is_convoy:
                     if move_here.current_province != order.destination_province:

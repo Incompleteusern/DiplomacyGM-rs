@@ -7,18 +7,16 @@
 
 // logger = logging.getLogger(__name__)
 
-use std::collections::HashSet;
-
 use serenity::all::GuildId;
 
 use super::{phase::Phase, player::Player, province::Province};
 
 pub struct Board {
-    players: HashSet<Player>,
-    provinces: HashSet<Province>,
+    players: Vec<Player>,
+    provinces: Vec<Province>,
     // units: HashSet<RefCell<Unit>>,
     phase: Phase,
-    year: usize,
+    year: i64,
     // TODO this is sad
     pub board_id: Option<GuildId>,
     pub fish: i64,
@@ -28,8 +26,8 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new(players: HashSet<Player>,
-        provinces: HashSet<Province>,
+    pub fn new(players: Vec<Player>,
+        provinces: Vec<Province>,
         // units: HashSet<RefCell<Unit>>,
         phase: Phase,
         // data: todo!(),

@@ -13,5 +13,6 @@ pub mod map_parser {
     pub mod vector {
         pub mod vector;
         pub mod utils;
+        pub mod transform;
     }
 }

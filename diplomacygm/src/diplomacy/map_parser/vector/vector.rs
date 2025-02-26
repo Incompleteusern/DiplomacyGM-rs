@@ -12,7 +12,7 @@
 // from shapely.geometry import Point
 
 // from diplomacy.map_parser.vector.transform import get_transform
-// from diplomacy.map_parser.vector.utils import get_player, get_unit_coordinates, get_svg_element, parse_path
+// from diplomacy.map_parser.vector.utils i`mport get_player, get_unit_coordinates, get_svg_element, parse_path
 // from diplomacy.persistence import phase
 // from diplomacy.persistence.board import Board
 // from diplomacy.persistence.player import Player
@@ -21,47 +21,77 @@
 
 // # TODO: (BETA) all attribute getting should be in utils which we import and call utils.my_unit()
 // # TODO: (BETA) consistent in bracket formatting
-// NAMESPACE: dict[str, str] = {
-//     "inkscape": "{http://www.inkscape.org/namespaces/inkscape}",
-//     "sodipodi": "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd",
-//     "svg": "http://www.w3.org/2000/svg",
-// }
+
 
 // logger = logging.getLogger(__name__)
 
-use std::{collections::{HashMap, HashSet}, env, fs, rc::Rc};
+use std::{borrow::Cow, collections::HashMap, env, fs, path::PathBuf, sync::Arc};
 
-use resvg::usvg::{self, Group, Options};
-use serde_json::{json, Value};
+use quick_xml::{events::{BytesStart, Event}, Reader};
+use serde_json::Value;
 
-use crate::diplomacy::{map_parser::vector::utils::{get_json_string, get_svg_element}, persistence::{player::Player, province::Province}};
+use crate::diplomacy::{map_parser::vector::utils::{get_id, get_json_string}, persistence::{player::{Player, PlayerInfo}, province::{Province, ProvinceInfo, ProvinceType}}};
 
-// pub struct Layers {
-//     land_layer: Group,
-//     island_layer: Group,
-//     island_fill_layer: Group,
-//     sea_layer: Group,
-//     names_layer: Group,
-//     centers_layer: Group,
-//     units_layer: Option<Group>,
-//     phantom_primary_armies_layer: Group, 
-//     phantom_retreat_armies_layer: Group, 
-//     phantom_primary_fleets_layer: Group, 
-//     phantom_retreat_fleets_layer: Group, 
-// }
+use super::utils::{get_attribute, get_inkspace_label, get_player};
 
 
-pub struct Parser {
-    datafile: String,
-    // layers: Layers,
-    color_to_player: HashMap<String, Option<Player>>,
-    name_to_province: HashMap<String, Province>,
-    cache_provinces: Option<HashSet<Province>>,
-    cache_adjacencies: Option<HashSet<(String, String)>>
+
+#[derive(PartialEq, Debug, Clone)]
+enum Layer {
+    None,
+    LandLayer,
+    IslandLayer,
+    IslandFillLayer,
+    SeaLayer
 }
 
+pub struct LayerInfo {
+    land_layer: String,
+    island_layer: String,
+    island_fill_layer: String,
+    sea_layer: String,
+    // names_layer: String,
+    // centers_layer: String,
+    // units_layer: Option<String>,
+    // phantom_primary_armies_layer: String, 
+    // phantom_retreat_armies_layer: String, 
+    // phantom_primary_fleets_layer: String, 
+    // phantom_retreat_fleets_layer: String, 
+    province_labels: bool,
+    neutral: String,
+    neutral_sc: String
+}
+
+impl LayerInfo {
+    fn match_id(&self, id: Cow<'_, str>) -> Layer {
+        if id == self.land_layer {
+            Layer::LandLayer
+        } else if id == self.island_layer {
+            Layer::IslandLayer
+        } else if id == self.island_fill_layer {
+            Layer::IslandFillLayer
+        } else if id == self.sea_layer {
+            Layer::SeaLayer
+        } else {
+            Layer::None
+        }
+    }
+}
+
+pub struct Parser {
+    players: Vec<Arc<PlayerInfo>>,
+    datafile: String,
+    svg_path: PathBuf,
+    color_to_player: HashMap<String, Option<Arc<PlayerInfo>>>,
+    name_to_province: HashMap<String, Option<Arc<ProvinceInfo>>>,
+    layer_info: LayerInfo
+    // cache_provinces: Option<HashSet<Province>>,
+    // cache_adjacencies: Option<HashSet<(String, String)>>
+}
+
+// requires reodering island adjacencies to occur before island fill shrug
 impl Parser {
-    pub fn new(data: String) { // -> Parser {
+    pub fn new(data: String) -> Parser {
         let datafile = data;
         let current_dir = env::current_dir().unwrap();
         let data_path = current_dir.clone().join("config/".to_owned() + &datafile); 
@@ -74,19 +104,50 @@ impl Parser {
 
         let svg_path = current_dir.clone().join(get_json_string(&json, "file"));
 
-        let mut options = Options::default();
-        options.dpi = 200.0;
-        options.fontdb_mut().load_system_fonts();
+        let province_labels = layers.get("province_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
 
-        // let svg_tree = usvg::Tree::from_str(fs::read_to_string(&svg_path).expect("Failed to read file.").as_str(), &options).unwrap();
-        // let svg_root = svg_tree.root();
+        let land_layer = get_json_string(layers, "land_layer").to_owned();
+        let island_layer = get_json_string(layers, "island_borders").to_owned();
+        let island_fill_layer = get_json_string(layers, "island_fill_layer").to_owned();
+        let sea_layer = get_json_string(layers, "sea_borders").to_owned();
 
-        // println!("{}", layers);
+        let neutral = get_json_string(layers, "neutral").to_owned();
+        let neutral_sc = get_json_string(layers, "neutral_sc").to_owned();
 
-        // let land_layer = get_svg_element(&svg_root, get_json_string(layers, "land_layer")).unwrap();
-        // let island_layer = get_svg_element(&svg_root, get_json_string(layers, "island_borders")).unwrap();
+        let mut players: Vec<Arc<PlayerInfo>> = Vec::new();
+        let mut color_to_player: HashMap<String, Option<Arc<PlayerInfo>>> = HashMap::new();
+
+        let players_json = json.get("players").expect("Expected \'players\' in json").as_object().expect("Players should be json object");
+
+        for (name, data) in players_json {
+            let color = data.get("color").expect("Player missing \'color\'").as_str().expect("Color should be string");
+            let vscc = data.get("vscc").expect("Player missing \'vscc\'").as_i64().expect("Vscc should be int");
+            let iscc = data.get("iscc").expect("Player missing \'iscc\'").as_i64().expect("Iscc should be int");
+            let player = Arc::new(PlayerInfo { name: name.to_owned(), color: color.to_owned(), vscc, iscc });
+            players.push(Arc::clone(&player));
+            color_to_player.insert(color.to_owned(), Some(player));
+        }
+
+        color_to_player.insert(neutral.clone(), None);
+        color_to_player.insert(neutral_sc.clone(), None);
+
+        Parser {
+            players,
+            datafile,
+            svg_path,
+            color_to_player,
+            name_to_province: HashMap::new(),
+            layer_info: LayerInfo {
+                land_layer,
+                island_layer,
+                island_fill_layer,
+                sea_layer,
+                province_labels,
+                neutral,
+                neutral_sc
+            }
+        }
         // let island_fill_layer = get_svg_element(&svg_root, get_json_string(layers, "island_fill_layer")).unwrap();
-        // let sea_layer = get_svg_element(&svg_root, get_json_string(layers, "sea_borders")).unwrap();
         // let names_layer = get_svg_element(&svg_root, get_json_string(layers, "province_names")).unwrap();
         // let centers_layer = get_svg_element(&svg_root, get_json_string(layers, "supply_center_icons")).unwrap();
 
@@ -102,53 +163,172 @@ impl Parser {
         // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
         // let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
         // let phantom_retreat_fleets_layer: Group = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
-
-        // let pixmap_size = svg_root.size().to_int_size();
-
-        // let mut pixmap = Pixmap::new(2*pixmap_size.width(), 2*pixmap_size.height()).unwrap();
-        // resvg::render(&svg_root, usvg::Transform::default().pre_scale(2.0, 2.0), &mut pixmap.as_mut());
-        // svg_path.set_extension("png");
-        // pixmap.save_png(svg_path).unwrap();
-
-        // Parser {
-        //     datafile: datafile,
-        //     layers: Layers {
-        //         land_layer,
-        //         island_layer,
-        //         island_fill_layer,
-        //         sea_layer,
-        //         names_layer,
-        //         centers_layer,
-        //         units_layer,
-        //         phantom_primary_armies_layer, 
-        //         phantom_retreat_armies_layer, 
-        //         phantom_primary_fleets_layer, 
-        //         phantom_retreat_fleets_layer, 
-        //     },
-        //     color_to_player: HashMap::new(),
-        //     name_to_province: HashMap::new(),
-        //     cache_provinces: None,
-        //     cache_adjacencies: None
-        // }
     }
+
+
+    pub fn parse(&mut self) {
+        let svg_str = fs::read_to_string(&self.svg_path).expect("Failed to read file.");
+        let mut reader = Reader::from_str(svg_str.as_str());
+
+        let mut depth = 0;
+        let mut processed_layers: Vec<Layer> = Vec::new();
+        let mut layer = Layer::None;
+
+        // land layer, island layer, sea layer
+        let mut raw_provinces: Option<Vec<Arc<ProvinceInfo>>> = Some(Vec::new());
+        let mut finished_provinces: bool = false;
+
+        // name layer
+
+        loop {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(e)) => {
+                    if depth == 1 {
+                        println!("{:?}", get_id(&e));
+                        layer = self.layer_info.match_id(get_id(&e));
+                    } else if depth > 1 {
+                        match layer {
+                            _ => {}
+                        }
+                    }
+
+                    depth += 1;
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    
+                    if processed_layers.contains(&layer) {
+                        panic!("Layer {:?} processed twice", layer);
+                    }
+
+                    if layer != Layer::None {
+                        processed_layers.push(layer.clone()); 
+                    }
+
+                    // todo once we've established all names, take out raw_provinces
+                    // and populate name_to_provinces
+                },
+                Ok(Event::Text(e)) => {},
+                Ok(Event::CData(_)) => {},
+                Ok(Event::Comment(_)) => {},
+                Ok(Event::Empty(e)) => {
+                    // create provinces
+                    match layer {
+                        Layer::LandLayer | Layer::IslandLayer | Layer::SeaLayer => {
+                            let province_type = match layer {
+                                Layer::LandLayer => ProvinceType::LAND,
+                                Layer::IslandLayer => ProvinceType::ISLAND,
+                                Layer::SeaLayer => ProvinceType::SEA,
+                                _ => panic!("unreachable")
+                            };
+
+                            let mut province = self.parse_province(&e, province_type);
+                            // set owner for island layer
+                            if layer == Layer::LandLayer && self.layer_info.province_labels {
+                                province.initial_owner = get_player(&e, &self.color_to_player);
+                            }
+                            println!("{:?}", province);
+
+                            raw_provinces.as_mut().unwrap().push(Arc::new(province));
+                        },
+                        _ => {},
+                    }
+
+                    // // set province owner info
+                    // match layer {
+                    //     Layer::LandLayer | Layer::IslandLayer => {
+                    //         if self.layer_info.province_labels {
+                    //             province.initial_owner = get_player(&e, &self.color_to_player);
+                    //         }
+                    //         // println!("{:?}", province);
+                    //     },
+                    //     _ => {},
+                    // }
+                },
+                Ok(Event::Decl(_)) => {},
+                Ok(Event::PI(_)) => {},
+                Ok(Event::DocType(_)) => {}
+            }
+        }
+
+    }
+
+
+    fn parse_province(
+        &self,
+        province_data: &BytesStart<'_>,
+        province_type: ProvinceType,
+    ) -> ProvinceInfo {
+        if province_data.local_name().as_ref() != b"path" {
+            panic!("Nonpath meow");
+        }
+
+        let path_string = get_attribute(&province_data, "d").expect("Province path data not found");
+
+            // TODO all this
+//             layer_translation = get_transform(provinces_layer)
+//             this_translation = get_transform(province_data)
+
+//             province_coordinates = parse_path(path_string, layer_translation, this_translation)
+
+//             if len(province_coordinates) <= 1:
+//                 poly = shapely.Polygon(province_coordinates[0])
+//             else:
+//                 poly = shapely.MultiPolygon(map(shapely.Polygon, province_coordinates))
+//                 poly = poly.buffer(0.1)
+//                 # import matplotlib.pyplot as plt
+
+//                 # if not poly.is_valid:
+//                 #     print(f"MULTIPOLYGON IS NOT VALID (name: {self._get_province_name(province_data)})")
+//                 #     for subpoly in poly.geoms:
+//                 #         plt.plot(*subpoly.exterior.xy)
+//                 #     plt.show()
+
+//             province_coordinates = shapely.MultiPolygon()
+
+        let name = {
+            if self.layer_info.province_labels {
+                get_inkspace_label(&province_data).into_owned()
+            } else {
+                String::from("")
+            }
+        };
+
+        ProvinceInfo {
+            name,
+            province_type,
+            adjacent: Vec::new(),
+            has_supply_center: false,
+            initial_owner: None,
+            local_unit: None
+        }
+    }
+
+
+
+//     # TODO: (BETA) can a library do all of this for us? more safety from needing to support wild SVG legal syntax
+//     def _create_provinces_type(
+//         self,
+//         provinces_layer: Element,
+//         province_type: ProvinceType,
+//     ) -> set[Province]:
+//         provinces = set()
+//         prev_names = set()
+//         for province_data in provinces_layer.getchildren():
+
+//     def _initialize_province_owners(self, provinces_layer: Element) -> None:
+//         for province_data in provinces_layer.getchildren():
+//             name = self._get_province_name(province_data)
+//             self.name_to_province[name].owner = get_player(province_data, self.color_to_player)
+
 }
 
 
 //     def parse(self) -> Board:
 //         logger.debug("map_parser.vector.parse.start")
 //         start = time.time()
-
-//         players = set()
-//         for name, data in self.data["players"].items():
-//             color = data["color"]
-//             vscc = data["vscc"]
-//             iscc = data["iscc"]
-//             player = Player(name, color, vscc, iscc, set(), set())
-//             players.add(player)
-//             self.color_to_player[color] = player
-
-//         self.color_to_player[self.data["svg config"]["neutral"]] = None
-//         self.color_to_player[self.data["svg config"]["neutral_sc"]] = None
 
 //         provinces = self._get_provinces()
 
@@ -194,6 +374,13 @@ impl Parser {
 
 
 //         return Board(players, provinces, units, phase.initial(), self.data, self.datafile)
+
+//     def _get_province_coordinates(self) -> set[Province]:
+//         # TODO: (BETA) don't hardcode translation
+//         land_provinces = self._create_provinces_type(self.land_layer, ProvinceType.LAND)
+//         island_provinces = self._create_provinces_type(self.island_layer, ProvinceType.ISLAND)
+//         sea_provinces = self._create_provinces_type(self.sea_layer, ProvinceType.SEA)
+//         return land_provinces.union(island_provinces).union(sea_provinces)
 
 //     def read_map(self) -> tuple[set[Province], set[tuple[str, str]]]:
 //         if self.cache_provinces is None:
@@ -338,71 +525,6 @@ impl Parser {
 //                 coast.all_rets.add(coast.retreat_unit_coordinate)
 
 //         return provinces
-
-//     def _get_province_coordinates(self) -> set[Province]:
-//         # TODO: (BETA) don't hardcode translation
-//         land_provinces = self._create_provinces_type(self.land_layer, ProvinceType.LAND)
-//         island_provinces = self._create_provinces_type(self.island_layer, ProvinceType.ISLAND)
-//         sea_provinces = self._create_provinces_type(self.sea_layer, ProvinceType.SEA)
-//         return land_provinces.union(island_provinces).union(sea_provinces)
-
-//     # TODO: (BETA) can a library do all of this for us? more safety from needing to support wild SVG legal syntax
-//     def _create_provinces_type(
-//         self,
-//         provinces_layer: Element,
-//         province_type: ProvinceType,
-//     ) -> set[Province]:
-//         provinces = set()
-//         prev_names = set()
-//         for province_data in provinces_layer.getchildren():
-//             path_string = province_data.get("d")
-//             if not path_string:
-//                 raise RuntimeError("Province path data not found")
-//             layer_translation = get_transform(provinces_layer)
-//             this_translation = get_transform(province_data)
-
-//             province_coordinates = parse_path(path_string, layer_translation, this_translation)
-
-//             if len(province_coordinates) <= 1:
-//                 poly = shapely.Polygon(province_coordinates[0])
-//             else:
-//                 poly = shapely.MultiPolygon(map(shapely.Polygon, province_coordinates))
-//                 poly = poly.buffer(0.1)
-//                 # import matplotlib.pyplot as plt
-
-//                 # if not poly.is_valid:
-//                 #     print(f"MULTIPOLYGON IS NOT VALID (name: {self._get_province_name(province_data)})")
-//                 #     for subpoly in poly.geoms:
-//                 #         plt.plot(*subpoly.exterior.xy)
-//                 #     plt.show()
-
-//             province_coordinates = shapely.MultiPolygon()
-
-//             name = None
-//             if self.layers["province_labels"]:
-//                 name = self._get_province_name(province_data)
-
-//             province = Province(
-//                 name,
-//                 poly,
-//                 None,
-//                 None,
-//                 province_type,
-//                 False,
-//                 set(),
-//                 set(),
-//                 None,
-//                 None,
-//                 None,
-//             )
-
-//             provinces.add(province)
-//         return provinces
-
-//     def _initialize_province_owners(self, provinces_layer: Element) -> None:
-//         for province_data in provinces_layer.getchildren():
-//             name = self._get_province_name(province_data)
-//             self.name_to_province[name].owner = get_player(province_data, self.color_to_player)
 
 //     # Sets province names given the names layer
 //     def _initialize_province_names(self, provinces: set[Province]) -> None:

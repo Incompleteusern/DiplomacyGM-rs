@@ -1,6 +1,7 @@
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, RwLock}};
+use std::{collections::HashMap, sync::{Mutex, RwLock}};
 
 use serenity::all::GuildId;
+use tokio::task;
 
 use crate::diplomacy::map_parser::vector::vector::Parser;
 
@@ -29,7 +30,7 @@ impl Manager {
         boards.keys().map(|x| { x.clone() }).collect::<Vec<GuildId>>()
     }
 
-    pub fn create_game(&self, server_id: &GuildId, gametype: String) -> String {
+    pub async fn create_game(&self, server_id: &GuildId, gametype: String) -> String {
         {
             let boards = self._boards.read().unwrap();
             if boards.contains_key(server_id) {
@@ -40,12 +41,12 @@ impl Manager {
 
         // TODO logger.info(f"Creating new game in server {server_id}")s
 
-        Parser::new(gametype);
+        let result = task::spawn_blocking(|| Parser::new(gametype)).await.unwrap();
 
         let mut boards = self._boards.write().unwrap();
         let mut new_board = Board::new(
-            HashSet::new(),
-            HashSet::new(),
+            Vec::new(),
+            Vec::new(),
             // HashSet::new(),
             Phase::SpringMoves, 
             String::from("none")            

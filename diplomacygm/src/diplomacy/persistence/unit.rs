@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use super::{player::PlayerInfo, province::ProvinceInfo};
 
-#[derive(PartialEq, Hash)]
+#[derive(PartialEq, Hash, Debug)]
 pub enum UnitType {
     ARMY,
     FLEET
 }
 
+#[derive(Debug)]
 pub struct Unit {
     unit_type: UnitType,
     owner: Arc<PlayerInfo>,

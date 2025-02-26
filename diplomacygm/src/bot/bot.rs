@@ -25,6 +25,7 @@ use std::sync::{Arc};
 use poise::samples::HelpConfiguration;
 use rand::seq::{IndexedRandom, SliceRandom};
 use serenity::{all::{CreateMessage, GatewayIntents, Mention, ReactionType}, Client};
+use tokio::task;
 use tracing::info;
 
 use crate::{bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils::reply_if_slash}, diplomacy::persistence::manager::{self, Manager}};
@@ -371,8 +372,12 @@ async fn create_game(
         None => String::from("impdip1.1.json"),
     };
 
-    ctx.data().manager.create_game(&ctx.guild_id().unwrap(), gametype);
+    let manager = &ctx.data().manager;
+    let guild_id = ctx.guild_id().unwrap();
 
+    let game_message = manager.create_game(&guild_id, gametype).await;
+
+    ctx.say(game_message).await?;
     Ok(())
 }
 
