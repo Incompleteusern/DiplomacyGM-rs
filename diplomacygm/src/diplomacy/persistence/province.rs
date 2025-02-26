@@ -1,5 +1,5 @@
 
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use geos::Geometry;
 
@@ -27,7 +27,7 @@ impl Location {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProvinceType {
     LAND,
     ISLAND,
@@ -42,6 +42,7 @@ pub struct ProvinceInfo {
     pub adjacent: Vec<Arc<ProvinceInfo>>,
     pub has_supply_center: bool,
     pub initial_owner: Option<Arc<PlayerInfo>>,
+    pub initial_core: Option<Arc<PlayerInfo>>,
     pub local_unit: Option<Unit>,
     pub geometry: Geometry,
 //         primary_unit_coordinate: tuple[float, float],
@@ -49,11 +50,27 @@ pub struct ProvinceInfo {
 //         coasts: set[Coast],
 }
 
+impl Debug for ProvinceInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProvinceInfo")
+            .field("name", &self.name)
+            .field("province_type", &self.province_type)
+            .field("adjacent", &self.adjacent)
+            .field("has_supply_center", &self.has_supply_center)
+            .field("initial_owner", &self.initial_owner)
+            .field("local_unit", &self.local_unit)
+            .finish()
+    }
+}
+
 pub struct Province {
     pub info: ProvinceInfo,
+    corer: Option<Arc<PlayerInfo>>,
     core: Option<Arc<PlayerInfo>>,
+    half_core: Option<Arc<PlayerInfo>>,
     owner: Option<Arc<PlayerInfo>>,
-    local_unit: Option<Unit>
+    unit: Option<Unit>,
+    dislodged_unit: Option<Unit>
 }
 // class Province(Location):
 //     def __init__(

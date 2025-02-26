@@ -27,9 +27,7 @@
 
 use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufWriter, Write}, path::PathBuf, sync::Arc};
 
-use geo_types::{Coord, LineString, Polygon};
 use geos::{Geom, Geometry};
-use itertools::Itertools;
 use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
@@ -46,7 +44,10 @@ enum Layer {
     LandLayer,
     IslandLayer,
     IslandFillLayer,
-    SeaLayer
+    SeaLayer,
+    NamesLayer,
+    CentersLayer,
+    UnitsLayer
 }
 
 pub struct LayerInfo {
@@ -54,14 +55,17 @@ pub struct LayerInfo {
     island_layer: String,
     island_fill_layer: String,
     sea_layer: String,
-    // names_layer: String,
-    // centers_layer: String,
-    // units_layer: Option<String>,
+    names_layer: String,
+    centers_layer: String,
+    units_layer: Option<String>,
     // phantom_primary_armies_layer: String, 
     // phantom_retreat_armies_layer: String, 
     // phantom_primary_fleets_layer: String, 
     // phantom_retreat_fleets_layer: String, 
     province_labels: bool,
+    unit_labels: bool,
+    center_labels: bool,
+    unit_type_labeled: bool,
     neutral: String,
     neutral_sc: String,
     border_margin_hint: f64
@@ -77,6 +81,12 @@ impl LayerInfo {
             Layer::IslandFillLayer
         } else if id == self.sea_layer {
             Layer::SeaLayer
+        } else if id == self.names_layer {
+            Layer::NamesLayer
+        } else if id == self.centers_layer {
+            Layer::CentersLayer
+        } else if Some(id.into_owned()) == self.units_layer {
+            Layer::UnitsLayer
         } else {
             Layer::None
         }
@@ -88,7 +98,7 @@ pub struct Parser {
     datafile: String,
     svg_path: PathBuf,
     color_to_player: HashMap<String, Option<Arc<PlayerInfo>>>,
-    name_to_province: HashMap<String, Option<Arc<ProvinceInfo>>>,
+    name_to_province: HashMap<String, ProvinceInfo>,
     layer_info: LayerInfo,
     // cache_provinces: Option<HashSet<Province>>,
     // cache_adjacencies: Option<HashSet<(String, String)>>
@@ -110,11 +120,23 @@ impl Parser {
         let svg_path = current_dir.clone().join(get_json_string(&json, "file"));
 
         let province_labels = layers.get("province_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
+        let center_labels = layers.get("center_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
+        let unit_labels = layers.get("unit_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
+        let unit_type_labeled = layers.get("unit_type_labeled").map(|f| f.as_bool()).flatten().unwrap_or(false);
 
         let land_layer = get_json_string(layers, "land_layer").to_owned();
         let island_layer = get_json_string(layers, "island_borders").to_owned();
         let island_fill_layer = get_json_string(layers, "island_fill_layer").to_owned();
-        let sea_layer = get_json_string(layers, "sea_borders").to_owned();
+        let sea_layer: String = get_json_string(layers, "sea_borders").to_owned();
+        let names_layer: String = get_json_string(layers, "province_names").to_owned();
+        let centers_layer = get_json_string(layers, "supply_center_icons").to_owned();
+        let units_layer = {
+            if let Some(value) = layers.get("") {
+                Some(value.as_str().unwrap().to_owned())
+            } else { 
+                None
+            }
+        };
 
         let neutral = get_json_string(layers, "neutral").to_owned();
         let neutral_sc = get_json_string(layers, "neutral_sc").to_owned();
@@ -148,23 +170,19 @@ impl Parser {
                 island_layer,
                 island_fill_layer,
                 sea_layer,
+                names_layer,
+                centers_layer,
+                units_layer,
+                unit_type_labeled,
                 province_labels,
+                center_labels,
+                unit_labels,
                 neutral,
                 neutral_sc,
                 border_margin_hint
             }
         }
-        // let island_fill_layer = get_svg_element(&svg_root, get_json_string(layers, "island_fill_layer")).unwrap();
-        // let names_layer = get_svg_element(&svg_root, get_json_string(layers, "province_names")).unwrap();
-        // let centers_layer = get_svg_element(&svg_root, get_json_string(layers, "supply_center_icons")).unwrap();
 
-        // let units_layer = {
-        //     if let Some(value) = layers.get("detect_starting_units") {
-        //         Some(get_svg_element(&svg_root, get_json_string(layers, "starting_units")).unwrap())
-        //     } else { 
-        //         None
-        //     }
-        // };
 
         // let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
         // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
@@ -211,8 +229,33 @@ impl Parser {
                                 province_layer_count += 1;
                                 self.parse_province_layer(ProvinceType::SEA, &mut reader, &mut raw_provinces, e)
                             },
-                            Layer::IslandFillLayer => depth += 1,
+                            Layer::NamesLayer => {
+                                if self.layer_info.province_labels {
+                                    depth += 1
+                                } else {
+                                    todo!("support names layer")
+                                }
+                            },
+                            Layer::CentersLayer => {
+                                if self.layer_info.center_labels {
+                                    self.parse_supply_centers_assisted(&mut reader)
+                                } else {
+                                    todo!("support centers layer")
+                                }
+                            },
+                            Layer::UnitsLayer => {
+                                if self.layer_info.unit_labels {
+                                    self.parse_units_assisted(&mut reader)
+                                } else {
+                                    todo!("support units layer")
+                                }
+                            },
+
+                            Layer::IslandFillLayer => {
+                                self.parse_island_fill_layer(&mut reader);
+                            },
                             Layer::None => depth += 1,
+
                         }
                     } else {
                         depth += 1;
@@ -229,6 +272,8 @@ impl Parser {
                         processed_layers.push(layer.clone()); 
                     }
 
+                    layer = Layer::None;
+
                     if province_layer_count == 3 && !finished_provinces {
                         finished_provinces = true;
                         self.process_provinces(raw_provinces.take().unwrap());
@@ -240,6 +285,10 @@ impl Parser {
                 },
                 _ => {}
             }
+        }
+
+        for province in self.name_to_province.values() {
+            println!("{:?}", province);
         }
 
     }
@@ -255,7 +304,7 @@ impl Parser {
             match reader.read_event() {
                 Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
                 Ok(Event::Eof) => break,
-                Ok(Event::Start(e)) => {
+                Ok(Event::Start(_)) => {
                     depth += 1;
                 }
                 Ok(Event::End(_)) => {
@@ -265,49 +314,157 @@ impl Parser {
                     // create provinces
                     let mut province = self.parse_province(&e, province_type.clone(), &layer_transform);
                     // set owner for island layer
-                    if self.layer_info.province_labels {
+                    if province_type == ProvinceType::LAND {
                         province.initial_owner = get_player(&e, &self.color_to_player);
                     }
 
                     raw_provinces.as_mut().unwrap().push(province);
-
-                    // // set province owner info
-                    // match layer {
-                    //     Layer::LandLayer | Layer::IslandLayer => {
-                    //         if self.layer_info.province_labels {
-                    //             province.initial_owner = get_player(&e, &self.color_to_player);
-                    //         }
-                    //         // println!("{:?}", province);
-                    //     },
-                    //     _ => {},
-                    // }
                 },
                 _ => {}
             }
         }
-
-
-
     }
 
-    pub fn process_provinces(&mut self, mut provinces: Vec<ProvinceInfo>) {
-        let adjacencies_path = env::current_dir().unwrap().clone().join(format!("config/{}_adjacencies.txt", self.datafile).as_str()); 
+    pub fn parse_island_fill_layer(&mut self, reader: &mut Reader<&[u8]>) {
+        let mut depth = 0;
 
-        let file = File::create(adjacencies_path).unwrap();
-        let mut writer = BufWriter::new(&file);
-
-        for i in 0..provinces.len() {
-            let (left, right) = provinces.split_at_mut(i+1);
-            let a = &mut left[i];
-
-            for b in right {
-                if a.geometry.distance(&b.geometry).unwrap() < self.layer_info.border_margin_hint {
-                    // a.adjacent.push(Arc::clone(&b));
-                    writeln!(&mut writer, "{},{},{}", a.name, b.name, a.geometry.distance(&b.geometry).unwrap()).unwrap();
-                    // println!("{} {} adjacent", a.name, b.name);
+        while depth >= 0 {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(_)) => {
+                    depth += 1;
                 }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                },
+                Ok(Event::Empty(e)) => {
+                    let name = get_inkspace_label(&e);
+
+                    let province = self.name_to_province.get_mut(&name.into_owned()).expect("Unknown Province Name");
+
+                    province.initial_owner = get_player(&e, &self.color_to_player);
+                },
+                _ => {}
             }
         }
+    }
+
+    pub fn parse_supply_centers_assisted(&mut self, reader: &mut Reader<&[u8]>) {
+        let mut depth = 0;
+
+        while depth >= 0 {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(e)) => {
+                    depth += 1;
+                    if depth == 1 {
+                        println!("{:?}", e);
+                        let name = get_inkspace_label(&e).into_owned();
+
+                        let province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str());
+
+                        if province.has_supply_center {
+                            panic!("{} already has a supply center", name)
+                        }
+
+                        province.has_supply_center = true;
+                        
+                        province.initial_core = province.initial_owner.clone();
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                },
+                _ => {}
+            }
+        }
+    }
+
+    pub fn parse_units_assisted(&mut self, reader: &mut Reader<&[u8]>) {
+        let mut depth = 0;
+
+        while depth >= 0 {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(_)) => {
+                    depth += 1;
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                },
+                Ok(Event::Empty(e)) => {
+                    let mut name = get_inkspace_label(&e).into_owned();
+
+                    if self.layer_info.unit_type_labeled {
+                        name = name.chars().skip(1).collect();
+                    }
+
+                    // let province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str());
+
+                    // if province.has_supply_center {
+                    //     panic!("{} already has a supply center", name)
+                    // }
+
+                    // province.has_supply_center = true;
+                    
+                    // province.initial_core = get_player(&e, &self.color_to_player);
+                },
+                _ => {}
+            }
+        }
+    }
+
+    //     def _initialize_units_assisted(self) -> None:
+//         for unit_data in self.units_layer.getchildren():
+//             province_name = self._get_province_name(unit_data)
+//             if self.data["svg config"]["unit_type_labeled"]:
+//                 province_name = province_name[1:]
+//             province, coast = self._get_province_and_coast(province_name)
+//             self._set_province_unit(province, unit_data, coast)
+
+
+
+
+//         if self.cache_adjacencies is None:
+//             # set adjacencies
+//             self.cache_adjacencies = self._get_adjacencies(provinces)
+//         adjacencies = copy.deepcopy(self.cache_adjacencies)
+
+//         return (provinces, adjacencies)
+
+    pub fn process_provinces(&mut self, provinces: Vec<ProvinceInfo>) {
+        // let adjacencies_path = env::current_dir().unwrap().clone().join(format!("config/{}_adjacencies.txt", self.datafile).as_str()); 
+
+        // let file = File::create(adjacencies_path).unwrap();
+        // let mut writer = BufWriter::new(&file);
+
+        // for i in 0..provinces.len() {
+        //     let (left, right) = provinces.split_at_mut(i+1);
+        //     let a = &mut left[i];
+
+        //     for b in right {
+        //         if a.geometry.distance(&b.geometry).unwrap() < self.layer_info.border_margin_hint {
+        //             // a.adjacent.push(Arc::clone(&b));
+        //             writeln!(&mut writer, "{},{},{}", a.name, b.name, a.geometry.distance(&b.geometry).unwrap()).unwrap();
+        //             // println!("{} {} adjacent", a.name, b.name);
+        //         }
+        //     }
+        // }
+
+        // todo actually instantiate provinceinfo
+
+        for province in provinces {
+            let name = &province.name;
+            if self.name_to_province.contains_key(name) {
+                panic!("{} repeats in map, ignoring...", province.name)
+            }
+
+            self.name_to_province.insert(name.to_string(), province);
+        }
+
 
         // def _get_adjacencies(self, provinces: set[Province]) -> set[tuple[str, str]]:
         // adjacencies = set()
@@ -323,18 +480,33 @@ impl Parser {
         // else:
         //     for line in f:
         //         adjacencies.add(tuple(line[:-1].split(',')))
-        // # import matplotlib.pyplot as plt
-        // # for p in provinces:
-        // #     if isinstance(p.geometry, shapely.Polygon):
-        // #         plt.plot(*p.geometry.exterior.xy)
-        // #     else:
-        // #         for geo in p.geometry.geoms:
-        // #             plt.plot(*geo.exterior.xy)
-        // # plt.gca().invert_yaxis()
-        // # plt.show()
+
         // return adjacencies
 
-    }
+
+//         provinces = self.json_cheats(provinces)
+
+//         # set coasts
+//         for province in provinces:
+//             province.set_coasts()
+
+//             self._initialize_supply_centers_assisted()
+
+//         # set units
+//                 self._initialize_units_assisted()
+
+//         # set phantom unit coordinates for optimal unit placements
+//         self._set_phantom_unit_coordinates()
+
+//         for province in provinces:
+//             province.all_locs.add(province.primary_unit_coordinate)
+//             province.all_rets.add(province.retreat_unit_coordinate)
+//             for coast in province.coasts:
+//                 coast.all_locs.add(coast.primary_unit_coordinate)
+//                 coast.all_rets.add(coast.retreat_unit_coordinate)
+
+//         return provinces
+}
 
     fn parse_province(
         &self,
@@ -360,10 +532,6 @@ impl Parser {
                 String::from("")
             }
         };
-
-        if name.contains("Norwegian Sea") {
-            println!("{:?}", province_coordinates);
-        }
         
         let polygons: Vec<Geometry> = province_coordinates.into_iter().map(|p| -> Geometry {
             Geometry::try_from(p).expect("Failed Conversion")
@@ -378,21 +546,6 @@ impl Parser {
             geometry = geometry.buffer(0.1, 16).unwrap();
         }
 
-        //             if len(province_coordinates) <= 1:
-//                 poly = shapely.Polygon(province_coordinates[0])
-//             else:
-//                 poly = shapely.MultiPolygon(map(shapely.Polygon, province_coordinates))
-//                 poly = poly.buffer(0.1)
-//                 # import matplotlib.pyplot as plt
-
-//                 # if not poly.is_valid:
-//                 #     print(f"MULTIPOLYGON IS NOT VALID (name: {self._get_province_name(province_data)})")
-//                 #     for subpoly in poly.geoms:
-//                 #         plt.plot(*subpoly.exterior.xy)
-//                 #     plt.show()
-
-//             province_coordinates = shapely.MultiPolygon()
-
         ProvinceInfo {
             name,
             province_type,
@@ -400,15 +553,10 @@ impl Parser {
             adjacent: Vec::new(),
             has_supply_center: false,
             initial_owner: None,
+            initial_core: None,
             local_unit: None
         }
     }
-
-//     def _initialize_province_owners(self, provinces_layer: Element) -> None:
-//         for province_data in provinces_layer.getchildren():
-//             name = self._get_province_name(province_data)
-//             self.name_to_province[name].owner = get_player(province_data, self.color_to_player)
-
 }
 
 
@@ -460,41 +608,6 @@ impl Parser {
 
 
 //         return Board(players, provinces, units, phase.initial(), self.data, self.datafile)
-
-//     def _get_province_coordinates(self) -> set[Province]:
-//         # TODO: (BETA) don't hardcode translation
-//         land_provinces = self._create_provinces_type(self.land_layer, ProvinceType.LAND)
-//         island_provinces = self._create_provinces_type(self.island_layer, ProvinceType.ISLAND)
-//         sea_provinces = self._create_provinces_type(self.sea_layer, ProvinceType.SEA)
-//         return land_provinces.union(island_provinces).union(sea_provinces)
-
-//     def read_map(self) -> tuple[set[Province], set[tuple[str, str]]]:
-//         if self.cache_provinces is None:
-//             # set coordinates and names
-//             raw_provinces: set[Province] = self._get_province_coordinates()
-//             cache = []
-//             self.cache_provinces = set()
-//             for province in raw_provinces:
-//                 if province.name in cache:
-//                     logger.warning(f"{province.name} repeats in map, ignoring...")
-//                     continue
-//                 cache.append(province.name)
-//                 self.cache_provinces.add(province)
-
-//             if not self.layers["province_labels"]:
-//                 self._initialize_province_names(self.cache_provinces)
-
-//         provinces = copy.deepcopy(self.cache_provinces)
-//         for province in provinces:
-//             self.name_to_province[province.name] = province
-// TODO check for duplicates
-
-//         if self.cache_adjacencies is None:
-//             # set adjacencies
-//             self.cache_adjacencies = self._get_adjacencies(provinces)
-//         adjacencies = copy.deepcopy(self.cache_adjacencies)
-
-//         return (provinces, adjacencies)
 
 //     def names_to_provinces(self, names: set[str]):
 //         return map((lambda n: self.name_to_province[n]), names)
@@ -570,100 +683,6 @@ impl Parser {
 
 //         return provinces
 
-//     def _get_provinces(self) -> set[Province]:
-//         provinces, adjacencies = self.read_map()
-//         for name1, name2 in adjacencies:
-//             province1 = self.name_to_province[name1]
-//             province2 = self.name_to_province[name2]
-//             province1.adjacent.add(province2)
-//             province2.adjacent.add(province1)
-
-//         provinces = self.json_cheats(provinces)
-
-//         # set coasts
-//         for province in provinces:
-//             province.set_coasts()
-
-//         self._initialize_province_owners(self.land_layer)
-//         self._initialize_province_owners(self.island_fill_layer)
-
-//         # set supply centers
-//         # if self.data["svg config"]["coring"]:
-//         if self.layers["center_labels"]:
-//             self._initialize_supply_centers_assisted()
-//         else:
-//             self._initialize_supply_centers(provinces)
-
-//         # set units
-//         if self.units_layer is not None:
-//             if self.layers["unit_labels"]:
-//                 self._initialize_units_assisted()
-//             else:
-//                 self._initialize_units(provinces)
-
-//         # set phantom unit coordinates for optimal unit placements
-//         self._set_phantom_unit_coordinates()
-
-//         for province in provinces:
-//             province.all_locs.add(province.primary_unit_coordinate)
-//             province.all_rets.add(province.retreat_unit_coordinate)
-//             for coast in province.coasts:
-//                 coast.all_locs.add(coast.primary_unit_coordinate)
-//                 coast.all_rets.add(coast.retreat_unit_coordinate)
-
-//         return provinces
-
-//     # Sets province names given the names layer
-//     def _initialize_province_names(self, provinces: set[Province]) -> None:
-//         def get_coordinates(name_data: Element) -> tuple[float, float]:
-//             return float(name_data.get("x")), float(name_data.get("y"))
-
-//         def set_province_name(province: Province, name_data: Element) -> None:
-//             if province.name is not None:
-//                 raise RuntimeError(f"Province already has name: {province.name}")
-//             province.name = name_data.findall(".//svg:tspan", namespaces=NAMESPACE)[0].text
-
-//         initialize_province_resident_data(provinces, self.names_layer.getchildren(), get_coordinates, set_province_name)
-
-//     def _initialize_supply_centers_assisted(self) -> None:
-//         for center_data in self.centers_layer.getchildren():
-//             name = self._get_province_name(center_data)
-//             province = self.name_to_province[name]
-
-//             if province.has_supply_center:
-//                 raise RuntimeError(f"{name} already has a supply center")
-//             province.has_supply_center = True
-
-//             owner = province.owner
-//             if owner:
-//                 owner.centers.add(province)
-
-//             # TODO: (BETA): we cheat assume core = owner if exists because capital center symbols work different
-//             core = province.owner
-//             # if not core:
-//             #     core_data = center_data.findall(".//svg:circle", namespaces=NAMESPACE)[1]
-//             #     core = get_player(core_data, self.color_to_player)
-//             province.core = core
-
-//     # Sets province supply center values
-//     def _initialize_supply_centers(self, provinces: set[Province]) -> None:
-
-//         def get_coordinates(supply_center_data: Element) -> tuple[float | None, float | None]:
-//             circles = supply_center_data.findall(".//svg:circle", namespaces=NAMESPACE)
-//             if not circles:
-//                 return None, None
-//             circle = circles[0]
-//             base_coordinates = float(circle.get("cx")), float(circle.get("cy"))
-//             trans = get_transform(supply_center_data)
-//             return trans.transform(base_coordinates)
-
-//         def set_province_supply_center(province: Province, _: Element) -> None:
-//             if province.has_supply_center:
-//                 raise RuntimeError(f"{province.name} already has a supply center")
-//             province.has_supply_center = True
-
-//         initialize_province_resident_data(provinces, self.centers_layer, get_coordinates, set_province_supply_center)
-
 //     def _set_province_unit(self, province: Province, unit_data: Element, coast: Coast = None) -> Unit:
 //         if province.unit:
 //             return
@@ -686,25 +705,6 @@ impl Parser {
 //         province.unit = unit
 //         unit.player.units.add(unit)
 //         return unit
-
-//     def _initialize_units_assisted(self) -> None:
-//         for unit_data in self.units_layer.getchildren():
-//             province_name = self._get_province_name(unit_data)
-//             if self.data["svg config"]["unit_type_labeled"]:
-//                 province_name = province_name[1:]
-//             province, coast = self._get_province_and_coast(province_name)
-//             self._set_province_unit(province, unit_data, coast)
-
-//     # Sets province unit values
-//     def _initialize_units(self, provinces: set[Province]) -> None:
-//         def get_coordinates(unit_data: Element) -> tuple[float | None, float | None]:
-//             base_coordinates = tuple(
-//                 map(float, unit_data.findall(".//svg:path", namespaces=NAMESPACE)[0].get("d").split()[1].split(","))
-//             )
-//             trans = get_transform(unit_data)
-//             return trans.transform(base_coordinates)
-
-//         initialize_province_resident_data(provinces, self.units_layer, get_coordinates, self._set_province_unit)
 
 //     def _set_phantom_unit_coordinates(self) -> None:
 //         army_layer_to_key = [
@@ -817,51 +817,3 @@ impl Parser {
 //             return UnitType.ARMY
 //             raise RuntimeError(f"Unit has {num_sides} sides which does not match any unit definition.")
 
-
-// # Initializes relevant province data
-// # resident_dataset: SVG element whose children each live in some province
-// # get_coordinates: functions to get x and y child data coordinates in SVG
-// # function: method in Province that, given the province and a child element corresponding to that province, initializes
-// # that data in the Province
-// def initialize_province_resident_data(
-//     provinces: set[Province],
-//     resident_dataset: list[Element],
-//     get_coordinates: Callable[[Element], tuple[float, float]],
-//     resident_data_callback: Callable[[Province, Element], None],
-// ) -> None:
-//     resident_dataset = set(resident_dataset)
-//     for province in provinces:
-//         remove = set()
-
-//         found = False
-//         for resident_data in resident_dataset:
-//             x, y = get_coordinates(resident_data)
-
-//             if not x or not y:
-//                 remove.add(resident_data)
-//                 continue
-
-//             point = Point((x, y))
-//             if province.geometry.contains(point):
-//                 found = True
-//                 resident_data_callback(province, resident_data)
-//                 remove.add(resident_data)
-
-//         if not found:
-//             print("Not found!")
-
-//         for resident_data in remove:
-//             resident_dataset.remove(resident_data)
-
-
-// parsers = {}
-
-
-// def get_parser(name: str) -> Parser:
-//     if name not in parsers:
-//         logger.info(f"Creating new Parser for board named {name}")
-//         parsers[name] = Parser(name)
-//     return parsers[name]
-
-
-// # oneTrueParser = Parser()
