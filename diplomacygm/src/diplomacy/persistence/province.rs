@@ -1,6 +1,8 @@
 
 use std::sync::Arc;
 
+use geos::Geometry;
+
 use super::{player::{Player, PlayerInfo}, unit::Unit};
 
 
@@ -25,7 +27,7 @@ impl Location {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ProvinceType {
     LAND,
     ISLAND,
@@ -34,15 +36,14 @@ pub enum ProvinceType {
 
 
 // TODO make sure when dropping that all adjacencies are cleared
-#[derive(Debug)]
 pub struct ProvinceInfo {
     pub name: String,
     pub province_type: ProvinceType,
     pub adjacent: Vec<Arc<ProvinceInfo>>,
     pub has_supply_center: bool,
     pub initial_owner: Option<Arc<PlayerInfo>>,
-    pub local_unit: Option<Unit>
-//         coordinates: Polygon | MultiPolygon,
+    pub local_unit: Option<Unit>,
+    pub geometry: Geometry,
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
 //         coasts: set[Coast],

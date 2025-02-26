@@ -9,11 +9,18 @@ const INKSPACE_LABEL: &str = "inkscape:label";
 
 use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
-use quick_xml::{events::{BytesStart, BytesText}, name::QName};
-use resvg::usvg::{Group, Node};
+use geo_types::{Coord, LineString, Polygon};
+use quick_xml::events::BytesStart;
+use regex::Captures;
 use serde_json::Value;
 
-use crate::diplomacy::persistence::player::PlayerInfo;
+use crate::diplomacy::persistence::{player::PlayerInfo, province};
+
+use super::transform::Transform;
+
+pub fn get_float(m: &Captures, i: usize) -> f64 {
+    m.get(i).unwrap().as_str().parse::<f64>().expect("Failed to parse float")
+}
 
 pub fn get_attribute<'a>(e: &'a BytesStart, id: &str) -> Option<Cow<'a, str>> {
     e.try_get_attribute(id).expect(format!("Failed to get attribute \'{}\' in svg", id).as_str())
@@ -101,7 +108,55 @@ pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
 // ) -> tuple[float, float]:
 //     return (former_coordinate[0] + coordinate[0], former_coordinate[1] + coordinate[1])
 
+fn parse_path_command(
+    command: char,
+    offset: (f64, f64),
+    current_coord: Coord,
+) -> Coord {
+    let reset = command.is_ascii_uppercase();
+    let command = command.to_ascii_lowercase();
 
+    match command {
+        'm' | 'c' | 'l' | 't' | 's' | 'q' | 'a' => {
+            if reset {
+                Coord { x: offset.0, y: offset.1 }
+            } else {
+                Coord { x: current_coord.x + offset.0, y: current_coord.y + offset.1 }
+            }
+        },
+        'v' => {
+            if reset {
+                Coord { x: current_coord.x, y: offset.1 }
+            } else {
+                Coord { x: current_coord.x, y: current_coord.y + offset.1 }
+            }
+        },
+        'h' => {
+            if reset {
+                Coord { x: offset.0, y: current_coord.y }
+            } else {
+                Coord { x: current_coord.x + offset.0, y: current_coord.y }
+            }
+        },
+        _ => panic!("Unknown SVG path command: {}", command)
+    }
+
+    //     if command in ["m", "c", "l", "t", "s", "q", "a"]:
+//         if reset:
+//             coordinate = (0, 0)
+//         return move_coordinate(coordinate, args[-1])  # Ignore all args except the last
+//     elif command in ["h", "v"]:
+//         coordinate = list(coordinate)
+//         if command == "h":
+//             index = 0
+//         else:
+//             index = 1
+//         if reset:
+//             coordinate[index] = 0
+//         coordinate[index] += args[0][0]
+//         return tuple(coordinate)
+
+}
 
 // # returns:
 // # new base_coordinate (= base_coordinate if not applicable),
@@ -130,6 +185,109 @@ pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
 //         return tuple(coordinate)
 //     else:
 //         raise RuntimeError(f"Unknown SVG path command: {command}")
+
+pub fn parse_path(path_string: &str, layer_transform: &Transform, this_transform: &Transform) -> Vec<Polygon> {
+    // println!("{}", path_string);
+
+    let mut path: Vec<String> = Vec::new();
+
+    for s in path_string.split(" ") {
+        if s.chars().next().unwrap().is_ascii_alphabetic() && s.len() > 1 {
+            let (command, argument) = s.split_at(1);
+
+            path.push(command.to_owned());
+            path.push(argument.to_owned());
+        } else {
+            path.push(s.to_owned());
+        }
+
+    }
+
+    let mut province_polygons = Vec::new();
+    let mut current_polygon = Vec::new();
+    let mut command: Option<char> = None;
+    let mut expected_arguments = 0;
+    let mut start: Option<Coord> = None;
+    let mut coordinate = Coord { x: 0.0, y: 0.0};
+
+    let mut path_iter = path.iter().peekable();
+
+    while let Some(s) = path_iter.peek() {
+        let first_char = s.chars().next().unwrap();
+
+        if first_char.is_ascii_alphabetic() {
+            path_iter.next();
+            command = Some(first_char);
+
+            match first_char.to_ascii_lowercase() {
+                'z' => {
+                    if let Some(point) = start {
+                        current_polygon.push(layer_transform.transform(this_transform.transform(point)));
+                    } else {
+                        panic!("Invalid geometry: got 'z' on first element in a subgeometry");
+                    }
+
+                    start = None;
+                    province_polygons.push(Polygon::new(LineString::new(current_polygon), Vec::new()));
+                    current_polygon = Vec::new();
+
+                    // If we are closing, and there is more, there must be a second polygon (Chukchi Sea)
+                    if path_iter.peek().is_some() {
+                        continue;
+                    } else {
+                        break;
+                    }
+                },
+                'm' | 'l' | 'h' | 'v' | 't' => expected_arguments = 1,
+                's' | 'q' => expected_arguments = 2,
+                'c' => expected_arguments = 3,
+                'a' => expected_arguments = 4,
+                _ => panic!("Unknown SVG path command {}", first_char)
+            }
+        }
+
+        if command == Some('z') {
+            panic!("Invalid path, 'z' was followed by arguments")
+        }
+
+        for _ in 0..(expected_arguments-1) {
+            let coord = path_iter.next().unwrap();
+            // println!("skipping {}", coord);
+        }
+        
+        let offset = path_iter.next().unwrap();
+
+        let offset = {
+            match command.unwrap().to_ascii_lowercase() {
+                'v' => {
+                    (0.0, offset.parse::<f64>().unwrap())
+                },
+                'h' => {
+                    (offset.parse::<f64>().unwrap(), 0.0)
+                },
+                _ => {
+                    let (x, y) = offset.split_once(",").unwrap();
+                    (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                }
+            }
+        };
+        // println!("{:?}", offset);
+
+        coordinate = parse_path_command(command.unwrap(), offset, coordinate);
+
+        start = start.or(Some(coordinate));
+        
+        current_polygon.push(layer_transform.transform(this_transform.transform(coordinate)));
+    }
+
+    if current_polygon.len() > 0 {
+        province_polygons.push(Polygon::new(LineString::new(current_polygon), Vec::new()));
+    }
+
+
+    province_polygons
+
+}
 
 // def parse_path(path_string: str, layer_translation: Transform, this_translation: Transform):
 //     province_coordinates = [[]]

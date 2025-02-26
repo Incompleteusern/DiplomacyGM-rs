@@ -8,7 +8,6 @@ pub enum UnitType {
     FLEET
 }
 
-#[derive(Debug)]
 pub struct Unit {
     unit_type: UnitType,
     owner: Arc<PlayerInfo>,

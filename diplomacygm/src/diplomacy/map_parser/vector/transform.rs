@@ -7,7 +7,11 @@
 
 use core::panic;
 
+use geo_types::Coord;
 use quick_xml::events::BytesStart;
+use regex::Regex;
+
+use crate::diplomacy::map_parser::vector::utils::get_float;
 
 use super::utils::get_attribute;
 
@@ -22,18 +26,18 @@ pub struct Transform {
 
 impl Transform {
 
-    pub fn transform(&self, p: (f64, f64)) -> (f64, f64) {
-        let x = self.x_dx * p.0 + self.x_dy * p.1 + self.x_c;
-        let y = self.y_dx * p.0 + self.y_dy * p.1 + self.y_c;
-        (x, y)
+    pub fn transform(&self, p: Coord) -> Coord {
+        let x = self.x_dx * p.x + self.x_dy * p.y + self.x_c;
+        let y = self.y_dx * p.x + self.y_dy * p.y + self.y_c;
+        Coord { x: x, y: y }
     }
 
-    pub fn inverse_tranform(&self, p: (f64, f64)) -> (f64, f64) {
-        let p = (p.0 - self.x_c, p.1 - self.y_c);
+    pub fn inverse_tranform(&self, p: Coord) -> Coord {
+        let p = (p.x - self.x_c, p.y - self.y_c);
         let det = self.x_dx * self.y_dy - self.x_dy * self.y_dx; 
         let x = self.y_dy * p.0 - self.x_dy * p.1;
         let y = - self.y_dx * p.0 + self.x_dx * p.1;
-        (x / det, y / det)
+        Coord { x: x / det, y: y / det }
     }
 
     pub fn empty() -> Transform {
@@ -48,36 +52,23 @@ impl Transform {
         Transform { x_dx, y_dy, x_dy, y_dx, x_c, y_c }
     }
 
-    pub fn get_transform(e: BytesStart) -> Transform {
-        let transform_string: Option<std::borrow::Cow<'_, str>> = get_attribute(&e, "tranform");
+    pub fn get_transform(e: &BytesStart) -> Transform {
+        let transform_string: Option<std::borrow::Cow<'_, str>> = get_attribute(e, "transform");
+        // println!("transform: {:?}", transform_string);
 
         if let Some(s) = transform_string {
             if s.len() == 0 {
                 Self::empty()
             } else if s.starts_with("translate") {
-                todo!()
-                // if self.transform_string:
-                // translation_match = re.search("^\\s*translate\\((.*),(.*)\\)\\s*", self.transform_string)
-                // if translation_match:
-                //     self.x_c = float(translation_match.group(1))
-                //     self.y_c = float(translation_match.group(2))
-                // else:
-                //     raise RuntimeError("Translation not found")
+                let re = Regex::new(r"^\s*translate\(([^,]*),([^,]*)\)\s*$").unwrap();
+                let m = re.captures(&s).expect("Translation not found");
+
+                Self::translate(get_float(&m, 1), get_float(&m, 2))
             } else if s.starts_with("matrix") {
-                todo!()
-                // matrix_transform_match = re.search(
-                //     "^\\s*matrix\\((.*),(.*),(.*),(.*),(.*),(.*)\\)\\s*", self.transform_string
-                // )
-                // self.matrix_transform: tuple[float, float, float, float, float, float] = (1, 0, 0, 1, 0, 0)
-                // if matrix_transform_match:
-                //     self.x_dx = float(matrix_transform_match.group(1))
-                //     self.y_dx = float(matrix_transform_match.group(2))
-                //     self.x_dy = float(matrix_transform_match.group(3))
-                //     self.y_dy = float(matrix_transform_match.group(4))
-                //     self.x_c = float(matrix_transform_match.group(5))
-                //     self.y_c = float(matrix_transform_match.group(6))
-                // else:
-                //     raise RuntimeError("Matrix transform not found")
+                let re = Regex::new(r"^\s*matrix\(([^,]*),([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)\)\s*$").unwrap();
+                let m = re.captures(&s).expect("Matrix transform not found");
+
+                Self::matrix(get_float(&m, 1), get_float(&m, 2), get_float(&m, 3), get_float(&m, 4), get_float(&m, 5), get_float(&m, 6))
             } else {
                 panic!("Unknown tranform: {}", s)
             }
