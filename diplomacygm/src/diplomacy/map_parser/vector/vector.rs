@@ -25,7 +25,7 @@
 
 // logger = logging.getLogger(__name__)
 
-use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufWriter, Write}, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::Arc};
 
 use geos::{Geom, Geometry};
 use quick_xml::{events::{BytesStart, Event}, Reader};
@@ -68,7 +68,8 @@ pub struct LayerInfo {
     unit_type_labeled: bool,
     neutral: String,
     neutral_sc: String,
-    border_margin_hint: f64
+    border_margin_hint: f64,
+    overrides: Option<Value>
 }
 
 impl LayerInfo {
@@ -109,13 +110,14 @@ impl Parser {
     pub fn new(data: String) -> Parser {
         let datafile = data;
         let current_dir = env::current_dir().unwrap();
-        let data_path = current_dir.clone().join("config/".to_owned() + &datafile); 
+        let data_path = current_dir.clone().join("config/".to_string() + &datafile); 
         println!("{:?}", data_path);
 
         let data = fs::read_to_string(data_path).expect("Failed to read file.");
         let json: Value = serde_json::from_str(&data).expect("JSON was not well-formatted");
 
         let layers = json.get("svg config").expect("Expected \'svg config\' in json");
+        let overrides = json.get("overrides").cloned();
 
         let svg_path = current_dir.clone().join(get_json_string(&json, "file"));
 
@@ -124,22 +126,22 @@ impl Parser {
         let unit_labels = layers.get("unit_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
         let unit_type_labeled = layers.get("unit_type_labeled").map(|f| f.as_bool()).flatten().unwrap_or(false);
 
-        let land_layer = get_json_string(layers, "land_layer").to_owned();
-        let island_layer = get_json_string(layers, "island_borders").to_owned();
-        let island_fill_layer = get_json_string(layers, "island_fill_layer").to_owned();
-        let sea_layer: String = get_json_string(layers, "sea_borders").to_owned();
-        let names_layer: String = get_json_string(layers, "province_names").to_owned();
-        let centers_layer = get_json_string(layers, "supply_center_icons").to_owned();
+        let land_layer = get_json_string(layers, "land_layer").to_string();
+        let island_layer = get_json_string(layers, "island_borders").to_string();
+        let island_fill_layer = get_json_string(layers, "island_fill_layer").to_string();
+        let sea_layer: String = get_json_string(layers, "sea_borders").to_string();
+        let names_layer: String = get_json_string(layers, "province_names").to_string();
+        let centers_layer = get_json_string(layers, "supply_center_icons").to_string();
         let units_layer = {
             if let Some(value) = layers.get("") {
-                Some(value.as_str().unwrap().to_owned())
+                Some(value.as_str().unwrap().to_string())
             } else { 
                 None
             }
         };
 
-        let neutral = get_json_string(layers, "neutral").to_owned();
-        let neutral_sc = get_json_string(layers, "neutral_sc").to_owned();
+        let neutral = get_json_string(layers, "neutral").to_string();
+        let neutral_sc = get_json_string(layers, "neutral_sc").to_string();
         let border_margin_hint = layers.get("border_margin_hint").unwrap().as_f64().unwrap();
 
         let mut players: Vec<Arc<PlayerInfo>> = Vec::new();
@@ -151,9 +153,9 @@ impl Parser {
             let color = data.get("color").expect("Player missing \'color\'").as_str().expect("Color should be string");
             let vscc = data.get("vscc").expect("Player missing \'vscc\'").as_i64().expect("Vscc should be int");
             let iscc = data.get("iscc").expect("Player missing \'iscc\'").as_i64().expect("Iscc should be int");
-            let player = Arc::new(PlayerInfo { name: name.to_owned(), color: color.to_owned(), vscc, iscc });
+            let player = Arc::new(PlayerInfo { name: name.to_string(), color: color.to_string(), vscc, iscc });
             players.push(Arc::clone(&player));
-            color_to_player.insert(color.to_owned(), Some(player));
+            color_to_player.insert(color.to_string(), Some(player));
         }
 
         color_to_player.insert(neutral.clone(), None);
@@ -179,7 +181,8 @@ impl Parser {
                 unit_labels,
                 neutral,
                 neutral_sc,
-                border_margin_hint
+                border_margin_hint,
+                overrides
             }
         }
 
@@ -189,7 +192,6 @@ impl Parser {
         // let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
         // let phantom_retreat_fleets_layer: Group = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
     }
-
 
     pub fn parse(&mut self) {
         let svg_str = fs::read_to_string(&self.svg_path).expect("Failed to read file.");
@@ -287,9 +289,9 @@ impl Parser {
             }
         }
 
-        for province in self.name_to_province.values() {
-            println!("{:?}", province);
-        }
+        // for province in self.name_to_province.values() {
+        //     println!("{:?}", province);
+        // }
 
     }
 
@@ -360,7 +362,6 @@ impl Parser {
                 Ok(Event::Start(e)) => {
                     depth += 1;
                     if depth == 1 {
-                        println!("{:?}", e);
                         let name = get_inkspace_label(&e).into_owned();
 
                         let province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str());
@@ -425,34 +426,38 @@ impl Parser {
 //             province, coast = self._get_province_and_coast(province_name)
 //             self._set_province_unit(province, unit_data, coast)
 
+    pub fn process_provinces(&mut self, mut provinces: Vec<ProvinceInfo>) {
+        let adjacencies_path = env::current_dir().unwrap().clone().join(format!("config/{}_adjacencies.txt", self.datafile).as_str()); 
 
+        let mut adjacencies: Vec<(String, String)> = Vec::new();
 
+        if fs::exists(&adjacencies_path).unwrap() {
+            let file = File::open(&adjacencies_path).unwrap();
+            let mut lines = BufReader::new(file).lines();
+            while let Some(Ok(line)) = lines.next() {
+                println!("{}", line);
+                let (a, b) = line.split_once(',').unwrap();
+                adjacencies.push((a.to_string(), b.to_string()));
+            }
+        } else {
+            let file = File::create(&adjacencies_path).unwrap();
+            let mut writer = BufWriter::new(&file);
 
-//         if self.cache_adjacencies is None:
-//             # set adjacencies
-//             self.cache_adjacencies = self._get_adjacencies(provinces)
-//         adjacencies = copy.deepcopy(self.cache_adjacencies)
+            for i in 0..provinces.len() {
+                let (left, right) = provinces.split_at_mut(i+1);
+                let a = &mut left[i];
 
-//         return (provinces, adjacencies)
+                for b in right {
+                    if a.geometry.distance(&b.geometry).unwrap() < self.layer_info.border_margin_hint {
+                        // a.adjacent.push(Arc::clone(&b));
+                        writeln!(&mut writer, "{},{}", a.name, b.name).unwrap();
+                        adjacencies.push((a.name.clone(), b.name.clone()));
+                    }
+                }
+            }
+        }
 
-    pub fn process_provinces(&mut self, provinces: Vec<ProvinceInfo>) {
-        // let adjacencies_path = env::current_dir().unwrap().clone().join(format!("config/{}_adjacencies.txt", self.datafile).as_str()); 
-
-        // let file = File::create(adjacencies_path).unwrap();
-        // let mut writer = BufWriter::new(&file);
-
-        // for i in 0..provinces.len() {
-        //     let (left, right) = provinces.split_at_mut(i+1);
-        //     let a = &mut left[i];
-
-        //     for b in right {
-        //         if a.geometry.distance(&b.geometry).unwrap() < self.layer_info.border_margin_hint {
-        //             // a.adjacent.push(Arc::clone(&b));
-        //             writeln!(&mut writer, "{},{},{}", a.name, b.name, a.geometry.distance(&b.geometry).unwrap()).unwrap();
-        //             // println!("{} {} adjacent", a.name, b.name);
-        //         }
-        //     }
-        // }
+        println!("{:?}", adjacencies);
 
         // todo actually instantiate provinceinfo
 
@@ -558,32 +563,6 @@ impl Parser {
         }
     }
 }
-
-
-//     def parse(self) -> Board:
-//         logger.debug("map_parser.vector.parse.start")
-//         start = time.time()
-
-//         provinces = self._get_provinces()
-
-//         units = set()
-//         for province in provinces:
-//             unit = province.unit
-//             if unit:
-//                 units.add(unit)
-
-//         elapsed = time.time() - start
-//         logger.info(f"map_parser.vector.parse: {elapsed}s")
-
-//         # import matplotlib.pyplot as plt
-//         # for province in provinces:
-//         #     poly = province.geometry
-//         #     if isinstance(poly, shapely.Polygon):
-//         #         plt.plot(*poly.exterior.xy)
-//         #     else:
-//         #         for subpoly in poly.geoms:
-//         #             plt.plot(*subpoly.exterior.xy)
-//         # plt.show()
 
 //         for province in provinces:
 //             province.all_locs -= {None}

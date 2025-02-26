@@ -14,7 +14,7 @@ use quick_xml::events::BytesStart;
 use regex::Captures;
 use serde_json::Value;
 
-use crate::diplomacy::persistence::{player::PlayerInfo, province};
+use crate::diplomacy::persistence::player::PlayerInfo;
 
 use super::transform::Transform;
 
@@ -195,10 +195,10 @@ pub fn parse_path(path_string: &str, layer_transform: &Transform, this_transform
         if s.chars().next().unwrap().is_ascii_alphabetic() && s.len() > 1 {
             let (command, argument) = s.split_at(1);
 
-            path.push(command.to_owned());
-            path.push(argument.to_owned());
+            path.push(command.to_string());
+            path.push(argument.to_string());
         } else {
-            path.push(s.to_owned());
+            path.push(s.to_string());
         }
 
     }
@@ -251,7 +251,7 @@ pub fn parse_path(path_string: &str, layer_transform: &Transform, this_transform
         }
 
         for _ in 0..(expected_arguments-1) {
-            let coord = path_iter.next().unwrap();
+            let _ = path_iter.next().unwrap();
             // println!("skipping {}", coord);
         }
         
