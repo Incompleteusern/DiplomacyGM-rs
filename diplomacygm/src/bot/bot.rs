@@ -19,7 +19,8 @@
 
 // manager = Manager()
 
-use std::sync::{Arc, RwLock};
+use core::option::Option::None;
+use std::sync::{Arc};
 
 use poise::samples::HelpConfiguration;
 use rand::seq::{IndexedRandom, SliceRandom};
@@ -31,7 +32,7 @@ use crate::{bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils
 use super::{config::is_bumble, utils::{react, unreact}};
 
 pub struct Data {
-    pub manager: RwLock<Manager>,
+    pub manager: Manager,
 } // User data, which is stored and accessible in all command invocations
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -162,7 +163,7 @@ async fn bumble(
         _ => {}
     };
 
-    ctx.data().manager.read().unwrap().change_fish(ctx.guild_id().unwrap(), -1);
+    ctx.data().manager.change_fish(ctx.guild_id().unwrap(), -1);
 
     ctx.say(word_of_bumble).await?;
 
@@ -248,7 +249,7 @@ pub async fn fish(
         }
     }
 
-    let total_fish = ctx.data.manager.read().unwrap().change_fish(ctx.guild_id().unwrap(), fish_change);
+    let total_fish = ctx.data.manager.change_fish(ctx.guild_id().unwrap(), fish_change);
 
     fish_message += &format!("\nIn total, {} fish have been caught!", total_fish);
 //     if random.randrange(0, 5) == 0:
@@ -370,7 +371,7 @@ async fn create_game(
         None => String::from("impdip1.1.json"),
     };
 
-    ctx.data().manager.write().unwrap().create_game(&ctx.guild_id().unwrap(), gametype);
+    ctx.data().manager.create_game(&ctx.guild_id().unwrap(), gametype);
 
     Ok(())
 }
@@ -765,7 +766,7 @@ pub async fn run_bot(token: String) {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data { manager: RwLock::new(manager) })
+                Ok(Data { manager })
             })
         })
         .build();

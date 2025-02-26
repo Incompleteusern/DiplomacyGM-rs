@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::{Mutex}};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, RwLock}};
 
 use serenity::all::GuildId;
 
@@ -9,7 +9,7 @@ use super::{board::Board, phase::Phase};
 //  Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database.
 pub struct Manager {
     // database: ,
-    _boards: HashMap<GuildId, Mutex<Board>>,
+    _boards: RwLock<HashMap<GuildId, Mutex<Board>>>,
 }
 
 impl Manager {
@@ -19,24 +19,30 @@ impl Manager {
         //         # TODO: have multiple for each variant?
         //         # do it like this so that the parser can cache data between board initilizations
         Manager {
-            _boards: HashMap::new(),
+            _boards: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn list_servers(&self) -> Vec<&GuildId> {
-        self._boards.keys().collect()
+    pub fn list_servers(&self) -> Vec<GuildId> {
+        let boards = self._boards.read().unwrap();
+
+        boards.keys().map(|x| { x.clone() }).collect::<Vec<GuildId>>()
     }
 
-    pub fn create_game(&mut self, server_id: &GuildId, gametype: String) -> String {
-        if self._boards.contains_key(server_id) {
-            panic!("todo actually do anyhow")
-//             raise RuntimeError("A game already exists in this server.")
+    pub fn create_game(&self, server_id: &GuildId, gametype: String) -> String {
+        {
+            let boards = self._boards.read().unwrap();
+            if boards.contains_key(server_id) {
+                panic!("todo actually do anyhow")
+    //             raise RuntimeError("A game already exists in this server.")
+            }
         }
 
         // TODO logger.info(f"Creating new game in server {server_id}")s
 
         Parser::new(gametype);
 
+        let mut boards = self._boards.write().unwrap();
         let mut new_board = Board::new(
             HashSet::new(),
             HashSet::new(),
@@ -46,7 +52,7 @@ impl Manager {
 
         new_board.board_id = Some(server_id.clone());
 //         self._database.save_board(server_id, self._boards[server_id])
-        self._boards.insert(server_id.clone(), Mutex::new(new_board));
+        boards.insert(server_id.clone(), Mutex::new(new_board));
         println!("{}", server_id.clone());
         
 
@@ -57,12 +63,9 @@ impl Manager {
 
     }
 
-    pub fn get_board(&self, server_id: GuildId) -> &Mutex<Board> {    
-        self._boards.get(&server_id).unwrap_or_else(|| panic!())
-    }
-
     pub fn change_fish(&self, server_id: GuildId, amount: i64) -> i64 {
-        let mut board = self.get_board(server_id).lock().unwrap();
+        let boards = self._boards.read().unwrap();
+        let mut board = boards.get(&server_id).unwrap_or_else(|| todo!()).lock().unwrap();
         board.fish += amount;
 
         board.fish
