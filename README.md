@@ -1,12 +1,17 @@
-This project is designed to fully automate the adjudication of Diplomacy games over Discord. The step-by-step process to
-use this bot will be outlined in the near future.
-
-Current limitations:
-
-- The only variant you may play at this time is Imperial Diplomacy. An interface for easily adding variants will be
-  added in the near future.
-
-If you find any bugs or inconsistencies or wish to see new features (for game-running work you would rather not do
-yourself or rather not subject your players to), please message icecream_guy on Discord.
+This is a incomplete port of maximpopov11/diplomacygm with no guarentees on finish.
 
 # DiplomacyGM-rs
+
+For SVGs, goal is that `usvg` is used for parsing, then `quick-xml` is used for modifying the xml, and then
+`resvg` and `usvg` is done to create a png. This is suboptimal in the sense that in an ideal world the last two 
+steps could be combined, but `usvg` only supports read-only trees and trying to hack it is likely a bad idea.
+
+Goals
+
+- [ ] Redesign persistence structs to cleanly filter out what is mutable game state and what is immutable 
+- [ ] Add anyhow or some way to create proper errors
+- [ ] Figure out tracing and have proper logging
+- [ ] Finish parsing code 
+- [ ] Create order parsing
+- [ ] Create adjudication (find out whether I want to port the mess of tests, and if so how)
+- [ ] Create mapping code
