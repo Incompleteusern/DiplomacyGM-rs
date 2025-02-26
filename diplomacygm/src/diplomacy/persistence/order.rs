@@ -18,8 +18,8 @@ pub trait ComplexOrder {
 // Builds are player orders because the unit does not yet exist.
 // Disbands are player order because builds are.
 pub enum PlayerOrder {
-    Build(Box<dyn Location>, UnitType),
-    Disband(Box<dyn Location>)
+    Build(Location, UnitType),
+    Disband(Location)
 }
 
 impl PartialEq for PlayerOrder {

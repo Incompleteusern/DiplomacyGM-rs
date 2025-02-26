@@ -36,24 +36,24 @@ use serde_json::{json, Value};
 
 use crate::diplomacy::{map_parser::vector::utils::{get_json_string, get_svg_element}, persistence::{player::Player, province::Province}};
 
-pub struct Layers {
-    land_layer: Group,
-    island_layer: Group,
-    island_fill_layer: Group,
-    sea_layer: Group,
-    names_layer: Group,
-    centers_layer: Group,
-    units_layer: Option<Group>,
-    phantom_primary_armies_layer: Group, 
-    phantom_retreat_armies_layer: Group, 
-    phantom_primary_fleets_layer: Group, 
-    phantom_retreat_fleets_layer: Group, 
-}
+// pub struct Layers {
+//     land_layer: Group,
+//     island_layer: Group,
+//     island_fill_layer: Group,
+//     sea_layer: Group,
+//     names_layer: Group,
+//     centers_layer: Group,
+//     units_layer: Option<Group>,
+//     phantom_primary_armies_layer: Group, 
+//     phantom_retreat_armies_layer: Group, 
+//     phantom_primary_fleets_layer: Group, 
+//     phantom_retreat_fleets_layer: Group, 
+// }
 
 
 pub struct Parser {
     datafile: String,
-    layers: Layers,
+    // layers: Layers,
     color_to_player: HashMap<String, Option<Player>>,
     name_to_province: HashMap<String, Province>,
     cache_provinces: Option<HashSet<Province>>,
@@ -61,7 +61,7 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(data: String) -> Parser {
+    pub fn new(data: String) { // -> Parser {
         let datafile = data;
         let current_dir = env::current_dir().unwrap();
         let data_path = current_dir.clone().join("config/".to_owned() + &datafile); 
@@ -78,30 +78,30 @@ impl Parser {
         options.dpi = 200.0;
         options.fontdb_mut().load_system_fonts();
 
-        let svg_tree = usvg::Tree::from_str(fs::read_to_string(&svg_path).expect("Failed to read file.").as_str(), &options).unwrap();
-        let svg_root = svg_tree.root();
+        // let svg_tree = usvg::Tree::from_str(fs::read_to_string(&svg_path).expect("Failed to read file.").as_str(), &options).unwrap();
+        // let svg_root = svg_tree.root();
 
-        println!("{}", layers);
+        // println!("{}", layers);
 
-        let land_layer = get_svg_element(&svg_root, get_json_string(layers, "land_layer")).unwrap();
-        let island_layer = get_svg_element(&svg_root, get_json_string(layers, "island_borders")).unwrap();
-        let island_fill_layer = get_svg_element(&svg_root, get_json_string(layers, "island_fill_layer")).unwrap();
-        let sea_layer = get_svg_element(&svg_root, get_json_string(layers, "sea_borders")).unwrap();
-        let names_layer = get_svg_element(&svg_root, get_json_string(layers, "province_names")).unwrap();
-        let centers_layer = get_svg_element(&svg_root, get_json_string(layers, "supply_center_icons")).unwrap();
+        // let land_layer = get_svg_element(&svg_root, get_json_string(layers, "land_layer")).unwrap();
+        // let island_layer = get_svg_element(&svg_root, get_json_string(layers, "island_borders")).unwrap();
+        // let island_fill_layer = get_svg_element(&svg_root, get_json_string(layers, "island_fill_layer")).unwrap();
+        // let sea_layer = get_svg_element(&svg_root, get_json_string(layers, "sea_borders")).unwrap();
+        // let names_layer = get_svg_element(&svg_root, get_json_string(layers, "province_names")).unwrap();
+        // let centers_layer = get_svg_element(&svg_root, get_json_string(layers, "supply_center_icons")).unwrap();
 
-        let units_layer = {
-            if let Some(value) = layers.get("detect_starting_units") {
-                Some(get_svg_element(&svg_root, get_json_string(layers, "starting_units")).unwrap())
-            } else { 
-                None
-            }
-        };
+        // let units_layer = {
+        //     if let Some(value) = layers.get("detect_starting_units") {
+        //         Some(get_svg_element(&svg_root, get_json_string(layers, "starting_units")).unwrap())
+        //     } else { 
+        //         None
+        //     }
+        // };
 
-        let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
-        let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
-        let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
-        let phantom_retreat_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
+        // let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
+        // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
+        // let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
+        // let phantom_retreat_fleets_layer: Group = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
 
         // let pixmap_size = svg_root.size().to_int_size();
 
@@ -110,26 +110,26 @@ impl Parser {
         // svg_path.set_extension("png");
         // pixmap.save_png(svg_path).unwrap();
 
-        Parser {
-            datafile: datafile,
-            layers: Layers {
-                land_layer,
-                island_layer,
-                island_fill_layer,
-                sea_layer,
-                names_layer,
-                centers_layer,
-                units_layer,
-                phantom_primary_armies_layer, 
-                phantom_retreat_armies_layer, 
-                phantom_primary_fleets_layer, 
-                phantom_retreat_fleets_layer, 
-            },
-            color_to_player: HashMap::new(),
-            name_to_province: HashMap::new(),
-            cache_provinces: None,
-            cache_adjacencies: None
-        }
+        // Parser {
+        //     datafile: datafile,
+        //     layers: Layers {
+        //         land_layer,
+        //         island_layer,
+        //         island_fill_layer,
+        //         sea_layer,
+        //         names_layer,
+        //         centers_layer,
+        //         units_layer,
+        //         phantom_primary_armies_layer, 
+        //         phantom_retreat_armies_layer, 
+        //         phantom_primary_fleets_layer, 
+        //         phantom_retreat_fleets_layer, 
+        //     },
+        //     color_to_player: HashMap::new(),
+        //     name_to_province: HashMap::new(),
+        //     cache_provinces: None,
+        //     cache_adjacencies: None
+        // }
     }
 }
 

@@ -2,9 +2,8 @@ This is a incomplete port of maximpopov11/diplomacygm with no guarentees on fini
 
 # DiplomacyGM-rs
 
-For SVGs, goal is that `usvg` is used for parsing, then `quick-xml` is used for modifying the xml, and then
-`resvg` and `usvg` is done to create a png. This is suboptimal in the sense that in an ideal world the last two 
-steps could be combined, but `usvg` only supports read-only trees and trying to hack it is likely a bad idea.
+For SVGs, goal is that `quick-xml` is used for parsing, then `quick-xml` is used for modifying the xml, and then
+`resvg` and `usvg` is done to create a png.
 
 Goals
 

@@ -19,9 +19,13 @@ pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
 pub fn get_svg_element(svg_root: &Group, element_id: &str) -> Option<Group> {
     for element in svg_root.children().iter() {
         if let Node::Group(g) = element {
+            println!("{}", g.id());
+            g.
             if g.id() == element_id {
                 return Some(*g.clone());
             }
+        } else {
+            println!("fuck {:?}", element);
         }
     }
 

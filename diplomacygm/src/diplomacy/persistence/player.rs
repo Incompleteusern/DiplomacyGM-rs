@@ -1,21 +1,30 @@
-use std::{collections::HashSet, sync::Weak};
+use std::{collections::HashSet, sync::Arc};
 
-use super::{order::PlayerOrder, province::Province, unit::Unit};
+use super::{order::PlayerOrder, province::ProvinceInfo,};
 
-pub struct Player {
+pub struct PlayerInfo {
     pub name: String,
     pub color: String,
     pub vscc: usize,
     pub iscc: usize,
-    centers: HashSet<Weak<Province>>,
-    units: HashSet<Weak<Unit>>,
+}
+
+pub struct Player {
+    pub info: Arc<PlayerInfo>,
+    centers: HashSet<Arc<ProvinceInfo>>,
     build_orders: HashSet<PlayerOrder>
 }
 
+impl PlayerInfo {
+    pub fn new(name: String, color: String, vscc: usize, iscc: usize) -> Arc<PlayerInfo> {
+        Arc::new(PlayerInfo { name, color, vscc, iscc })
+    }
+}
+
 impl Player {
-    pub fn new(name: String, color: String, vscc: usize, iscc: usize, centers: HashSet<Weak<Province>>, units: HashSet<Weak<Unit>>) -> Player {
+    pub fn new(info: Arc<PlayerInfo>, iscc: usize, centers: HashSet<Arc<ProvinceInfo>>) -> Player {
         Player {
-            name, color, vscc, iscc, centers, units, build_orders: HashSet::new()
+            info, centers, build_orders: HashSet::new()
         }
     }
 }

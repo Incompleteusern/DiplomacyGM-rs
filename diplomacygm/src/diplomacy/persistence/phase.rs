@@ -1,6 +1,3 @@
-
-
-
 pub enum Phase {
     WinterBuilds,
     FallRetreats,

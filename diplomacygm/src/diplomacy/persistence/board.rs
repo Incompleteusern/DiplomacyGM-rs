@@ -7,19 +7,16 @@
 
 // logger = logging.getLogger(__name__)
 
-use std::{cell::RefCell, collections::HashSet};
+use std::collections::HashSet;
 
 use serenity::all::GuildId;
 
-use super::{phase::Phase, player::Player, province::Province, unit::Unit};
-
-// This is terrible but each board's contents is always behind a mutex in Manager.
-unsafe impl Send for Board {}
+use super::{phase::Phase, player::Player, province::Province};
 
 pub struct Board {
     players: HashSet<Player>,
     provinces: HashSet<Province>,
-    units: HashSet<RefCell<Unit>>,
+    // units: HashSet<RefCell<Unit>>,
     phase: Phase,
     year: usize,
     // TODO this is sad
@@ -33,14 +30,14 @@ pub struct Board {
 impl Board {
     pub fn new(players: HashSet<Player>,
         provinces: HashSet<Province>,
-        units: HashSet<RefCell<Unit>>,
+        // units: HashSet<RefCell<Unit>>,
         phase: Phase,
         // data: todo!(),
         datafile: String) -> Board {
         Board {
             players,
             provinces,
-            units,
+            // units,
             phase,
             year: 0,
             board_id: None,
@@ -71,7 +68,7 @@ impl Board {
         // we ignore capitalization because this is primarily used for user input
 
         for player in self.players.iter() {
-            if player.name.to_lowercase() == name.to_lowercase() {
+            if player.info.name.to_lowercase() == name.to_lowercase() {
                 return Some(player)
             }
         }
@@ -89,7 +86,7 @@ impl Board {
         // we ignore capitalization because this is primarily used for user input
 
         for province in self.provinces.iter() {
-            if province.name.to_lowercase() == name.to_lowercase() {
+            if province.info.name.to_lowercase() == name.to_lowercase() {
                 return Some(province)
             }
         }

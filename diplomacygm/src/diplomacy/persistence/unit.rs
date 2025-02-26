@@ -1,6 +1,6 @@
-use std::{collections::HashSet, sync::Weak};
+use std::sync::Arc;
 
-use super::{player::Player, province::Province};
+use super::{player::PlayerInfo, province::ProvinceInfo};
 
 #[derive(PartialEq, Hash)]
 pub enum UnitType {
@@ -10,9 +10,9 @@ pub enum UnitType {
 
 pub struct Unit {
     unit_type: UnitType,
-    owner: Weak<Player>,
-    current_province: Weak<Province>,
-    retreat_options: HashSet<Weak<Province>>
+    owner: Arc<PlayerInfo>,
+    current_province: Arc<ProvinceInfo>,
+    retreat_options: Arc<ProvinceInfo>
 }
 
 

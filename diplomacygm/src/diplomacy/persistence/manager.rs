@@ -46,8 +46,9 @@ impl Manager {
         let mut new_board = Board::new(
             HashSet::new(),
             HashSet::new(),
-            HashSet::new(),
-            Phase::SpringMoves, String::from("none")            
+            // HashSet::new(),
+            Phase::SpringMoves, 
+            String::from("none")            
         );
 
         new_board.board_id = Some(server_id.clone());

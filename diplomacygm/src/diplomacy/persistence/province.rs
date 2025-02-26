@@ -1,16 +1,26 @@
-use std::{cell::RefCell, collections::HashSet, sync::Weak};
+use std::{cell::RefCell, collections::HashSet, sync::Arc};
 
-use super::{player::Player, unit::Unit};
+use super::{player::{Player, PlayerInfo}, unit::Unit};
 
-pub trait Location {
-    fn get_owner(&self) -> &Player;
 
-    fn get_name(&self) -> &str;
+impl PartialEq for Location {
+    fn eq(&self, other: &Self) -> bool {
+        todo!()
+    }
 }
 
-impl PartialEq for dyn Location {
-    fn eq(&self, other: &Self) -> bool {
-        self.get_name() == other.get_name()
+pub enum Location {
+    COAST,
+    PROVINCE(Province)
+}
+
+impl Location {
+    pub fn get_owner(&self) -> &Player {
+        todo!()
+    }
+
+    pub fn get_name(&self) -> &str {
+        todo!()
     }
 }
 
@@ -20,16 +30,21 @@ pub enum ProvinceType {
     SEA
 }
 
-pub struct Province {
+// TODO make sure when dropping that all adjacencies are cleared
+pub struct ProvinceInfo {
     pub name: String,
+    pub adjacent: HashSet<Arc<ProvinceInfo>>,
+    has_supply_center: bool,
+}
+
+pub struct Province {
+    pub info: ProvinceInfo,
 //         coordinates: Polygon | MultiPolygon,
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
-    adjacent: HashSet<Weak<Province>>,
-    has_supply_center: bool,
 //         coasts: set[Coast],
-    core: Option<Weak<Player>>,
-    owner: Option<Weak<Player>>,
+    core: Option<Arc<PlayerInfo>>,
+    owner: Option<Arc<PlayerInfo>>,
     local_unit: Option<RefCell<Unit>>
 }
 // class Province(Location):
