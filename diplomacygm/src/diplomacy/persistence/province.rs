@@ -1,5 +1,5 @@
 
-use std::{fmt::Debug, sync::{Arc, Mutex}};
+use std::{fmt::Debug, ops::DerefMut, sync::{Arc, Mutex}};
 
 use geos::Geometry;
 
@@ -28,7 +28,14 @@ impl Location {
 }
 
 // name is used while parsing, index is used when done
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub enum CoastReference {
+    Name(String),
+    Index(usize)
+}
+
+// name is used while parsing, index is used when done
+#[derive(Debug, Clone)]
 pub enum ProvinceReference {
     Name(String),
     Index(usize)
@@ -49,11 +56,66 @@ pub struct ProvinceInfo {
     pub has_supply_center: bool,
     pub initial_owner: Option<Arc<PlayerInfo>>,
     pub initial_core: Option<Arc<PlayerInfo>>,
-    pub local_unit: Option<Unit>,
+    pub initial_unit: Option<Unit>,
     pub geometry: Geometry,
+    pub coasts: Option<Vec<Coast>>
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
 //         coasts: set[Coast],
+}
+
+impl ProvinceInfo {
+    // This should only be called once all province adjacencies have been set.
+    pub fn to_reference(&self) -> ProvinceReference {
+        ProvinceReference::Name(self.name.clone())
+    }
+
+    pub fn set_coasts<'a, F>(&'a mut self, resolve: F) where 
+        F: Fn(&ProvinceReference) -> &'a Mutex<ProvinceInfo>
+     {
+        // Externally set, i. e. by json_cheats()
+        if self.coasts.is_some() {
+            return
+        }
+
+        // seas don't have coasts
+        if self.province_type == ProvinceType::SEA {
+            self.coasts = Some(Vec::new())
+        }
+
+        let mut sea_provinces = Vec::new();
+        for reference in &self.adjacent {
+            let province = resolve(&reference).try_lock().unwrap();
+            if province.province_type == ProvinceType::SEA || province.province_type == ProvinceType::ISLAND {
+                sea_provinces.push(province.to_reference());
+            }
+        }
+
+        let name = format!("{} coast", self.name);
+        self.coasts = Some(vec![Coast { name, adjacent_seas: sea_provinces, province: self.to_reference() }])        
+
+
+//         if self.type == ProvinceType.SEA:
+//             # seas don't have coasts
+//             return set()
+
+//         sea_provinces: set[Province] = set()
+//         for province in self.adjacent:
+//             # Islands do not break coasts
+//             if province.type == ProvinceType.SEA or province.type == ProvinceType.ISLAND:
+//                 sea_provinces.add(province)
+
+//         if len(sea_provinces) == 0:
+//             # this is not a coastal province
+//             return set()
+
+//         # TODO: (BETA) don't hardcode coasts
+
+//         for i, coast_set in enumerate(coast_sets):
+//             name = f"{self.name} coast"
+//             self.coasts.add(Coast(name, None, None, coast_set, self))
+    }
+
 }
 
 impl Debug for ProvinceInfo {
@@ -64,7 +126,8 @@ impl Debug for ProvinceInfo {
             .field("adjacent", &self.adjacent)
             .field("has_supply_center", &self.has_supply_center)
             .field("initial_owner", &self.initial_owner)
-            .field("local_unit", &self.local_unit)
+            .field("local_unit", &self.initial_unit)
+            .field("coasts", &self.coasts)
             .finish()
     }
 }
@@ -117,52 +180,6 @@ pub struct Province {
 //             raise RuntimeError(f"Cannot get coast of a province with num coasts {len(self.coasts)} != 1")
 //         return next(coast for coast in self.coasts)
 
-//     def set_coasts(self):
-//         """This should only be called once all province adjacencies have been set."""
-
-//         # Externally set, i. e. by json_cheats()
-//         if self.coasts:
-//             return
-
-//         if self.type == ProvinceType.SEA:
-//             # seas don't have coasts
-//             return set()
-
-//         sea_provinces: set[Province] = set()
-//         for province in self.adjacent:
-//             # Islands do not break coasts
-//             if province.type == ProvinceType.SEA or province.type == ProvinceType.ISLAND:
-//                 sea_provinces.add(province)
-
-//         if len(sea_provinces) == 0:
-//             # this is not a coastal province
-//             return set()
-
-//         # TODO: (BETA) don't hardcode coasts
-//         coast_sets: list[set[Province]] = []
-//         if True:
-//             coast_sets.append(sea_provinces)
-//         else:
-//             while sea_provinces:
-//                 coast_set: set[Province] = set()
-//                 to_parse: list[Province] = [next(iter(sea_provinces))]
-//                 while to_parse:
-//                     province = to_parse.pop()
-//                     sea_provinces.remove(province)
-//                     coast_set.add(province)
-//                     for adjacent in province.adjacent:
-//                         if (
-//                             adjacent in self.adjacent
-//                             and adjacent.type is not ProvinceType.LAND
-//                             and adjacent not in coast_set
-//                             and adjacent not in to_parse
-//                         ):
-//                             to_parse.append(adjacent)
-//                 coast_sets.append(coast_set)
-
-//         for i, coast_set in enumerate(coast_sets):
-//             name = f"{self.name} coast"
-//             self.coasts.add(Coast(name, None, None, coast_set, self))
 
 
 
@@ -208,6 +225,22 @@ pub struct Province {
 //         return self.name
 
 
+
+#[derive(Debug, Clone)]
+pub struct Coast {
+    pub name: String,
+//         primary_unit_coordinate: tuple[float, float],
+//         retreat_unit_coordinate: tuple[float, float],
+    pub adjacent_seas: Vec<ProvinceReference>,
+    pub province:  ProvinceReference
+}
+
+impl Coast {
+    // This should only be called once all province adjacencies have been set.
+    pub fn to_reference(&self) -> CoastReference {
+        CoastReference::Name(self.name.clone())
+    }
+}
 
 // class Coast(Location):
 //     def __init__(

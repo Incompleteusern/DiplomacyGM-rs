@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use super::{player::PlayerInfo, province::ProvinceInfo};
+use super::{player::PlayerInfo, province::{CoastReference, ProvinceReference}};
 
-#[derive(PartialEq, Hash, Debug)]
+#[derive(PartialEq, Hash, Debug, Clone)]
 pub enum UnitType {
     ARMY,
     FLEET
@@ -10,10 +10,11 @@ pub enum UnitType {
 
 #[derive(Debug)]
 pub struct Unit {
-    unit_type: UnitType,
-    owner: Arc<PlayerInfo>,
-    current_province: Arc<ProvinceInfo>,
-    retreat_options: Arc<ProvinceInfo>
+    pub unit_type: UnitType,
+    pub owner: Arc<PlayerInfo>,
+    pub current_province: ProvinceReference,
+    pub coast: Option<CoastReference>,
+    pub retreat_options: Option<Vec<ProvinceReference>>
 }
 
 

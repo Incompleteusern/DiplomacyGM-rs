@@ -32,7 +32,7 @@ use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
 
-use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string}}, persistence::{player::{Player, PlayerInfo}, province::{self, Province, ProvinceInfo, ProvinceReference, ProvinceType}}};
+use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::{Player, PlayerInfo}, province::{self, Coast, CoastReference, Province, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
 
 use super::utils::{get_attribute, get_inkspace_label, get_player, parse_path};
 
@@ -69,7 +69,6 @@ pub struct LayerInfo {
     neutral: String,
     neutral_sc: String,
     border_margin_hint: f64,
-    overrides: Option<Value>
 }
 
 impl LayerInfo {
@@ -86,7 +85,7 @@ impl LayerInfo {
             Layer::NamesLayer
         } else if id == self.centers_layer {
             Layer::CentersLayer
-        } else if Some(id.into_owned()) == self.units_layer {
+        } else if Some(id.to_string()) == self.units_layer {
             Layer::UnitsLayer
         } else {
             Layer::None
@@ -103,6 +102,7 @@ pub struct Parser {
     layer_info: LayerInfo,
     // cache_provinces: Option<HashSet<Province>>,
     // cache_adjacencies: Option<HashSet<(String, String)>>
+    overrides: Option<Value>
 }
 
 // requires reodering island adjacencies to occur before island fill shrug
@@ -133,7 +133,7 @@ impl Parser {
         let names_layer: String = get_json_string(layers, "province_names").to_string();
         let centers_layer = get_json_string(layers, "supply_center_icons").to_string();
         let units_layer = {
-            if let Some(value) = layers.get("") {
+            if let Some(value) = layers.get("starting_units") {
                 Some(value.as_str().unwrap().to_string())
             } else { 
                 None
@@ -182,10 +182,9 @@ impl Parser {
                 neutral,
                 neutral_sc,
                 border_margin_hint,
-                overrides
-            }
+            },
+            overrides
         }
-
 
         // let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
         // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
@@ -281,13 +280,36 @@ impl Parser {
                         self.process_provinces(raw_provinces.take().unwrap());
                         println!("done processing provinces ");
                     }
-
-                    // todo once we've established all names, take out raw_provinces
-                    // and populate name_to_provinces
                 },
                 _ => {}
             }
         }
+
+        //         for province in provinces:
+        //             province.all_locs -= {None}
+        //             province.all_rets -= {None}
+        //             if province.primary_unit_coordinate == None:
+        //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
+        //                 province.primary_unit_coordinate = (0, 0)
+        //             if province.retreat_unit_coordinate == None:
+        //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
+        //                 province.retreat_unit_coordinate = (0, 0)
+
+        //         for province in provinces:
+        //             for coast in province.coasts:
+        //                 coast.all_locs -= {None}
+        //                 coast.all_rets -= {None}
+        //                 if coast.primary_unit_coordinate == None:
+        //                     logger.warning(f"Province {coast.name} has no unit coord. Setting to 0,0 ...")
+        //                     coast.primary_unit_coordinate = (0, 0)
+        //                 if coast.retreat_unit_coordinate == None:
+        //                     logger.warning(f"Province {coast.name} has no retreat coord. Setting to 0,0 ...")
+        //                     coast.retreat_unit_coordinate = (0, 0)
+
+
+        //         return Board(players, provinces, units, phase.initial(), self.data, self.datafile)
+
+        // todo create provinces array index and reference using index
 
         for province in self.name_to_province.values() {
             println!("{:?}", province);
@@ -386,45 +408,107 @@ impl Parser {
     pub fn parse_units_assisted(&mut self, reader: &mut Reader<&[u8]>) {
         let mut depth = 0;
 
+        let mut unit_type = UnitType::ARMY;
+        let mut name = String::from("");
+
         while depth >= 0 {
             match reader.read_event() {
                 Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
                 Ok(Event::Eof) => break,
-                Ok(Event::Start(_)) => {
+                Ok(Event::Start(e)) => {
                     depth += 1;
+                    if depth == 1 {
+                        name = get_inkspace_label(&e).into_owned();
+                    }
+
+                    // if get
                 }
                 Ok(Event::End(_)) => {
+                    if depth == 1 {
+                        if self.layer_info.unit_type_labeled {
+                            let first_char = name.chars().next().unwrap().to_ascii_lowercase();
+                            unit_type = match first_char {
+                                'f' => UnitType::FLEET,
+                                'a' => UnitType::ARMY,
+                                _ => panic!("Unit types are labeled, but {} doesn't start with F or A", name)
+                            };
+                            name = name.chars().skip(1).collect();
+                        }
+    
+                        let (province, coast) = self.get_province_and_coast(name.clone());
+                        let mut province = province.try_lock().unwrap();
+                        let player = province.initial_owner.as_ref().unwrap().clone();
+
+                        let coast = if let Some(coast) = coast {
+                            Some(coast)
+                        } else {
+                            province.coasts.as_ref().map(|f| f.iter().next()).flatten()
+                                .map(|f| f.to_reference())
+                        };
+
+                        // println!("_____________________");
+                        // println!("{}", name);
+                        // println!("{:?}", player);
+                        // println!("{:?}", unit_type);
+                        // println!("_____________________");
+
+                        province.initial_unit = Some(Unit {
+                            unit_type: unit_type.clone(),
+                            owner: player,
+                            current_province: province.to_reference(),
+                            coast,
+                            retreat_options: None,
+                        });
+                    }
+
                     depth -= 1;
                 },
                 Ok(Event::Empty(e)) => {
-                    let mut name = get_inkspace_label(&e).into_owned();
-
-                    if self.layer_info.unit_type_labeled {
-                        name = name.chars().skip(1).collect();
+                    if e.local_name().as_ref() == b"path" {
+                        // println!("{:?}", e);
+                        let num_sides = get_attribute(&e, SODIPODI_SIDES).unwrap().into_owned();
+                        let num_sides = num_sides.as_str();
+                        unit_type = {
+                            match num_sides {
+                                "3" => UnitType::FLEET,
+                                "6" => UnitType::ARMY,
+                                _ => panic!("Unit has {} sides which does not match any unit definition.", num_sides)
+                            }
+                        };
                     }
-
-                    // let province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str());
-
-                    // if province.has_supply_center {
-                    //     panic!("{} already has a supply center", name)
-                    // }
-
-                    // province.has_supply_center = true;
-                    
-                    // province.initial_core = get_player(&e, &self.color_to_player);
                 },
                 _ => {}
             }
         }
     }
 
-    //     def _initialize_units_assisted(self) -> None:
-//         for unit_data in self.units_layer.getchildren():
-//             province_name = self._get_province_name(unit_data)
-//             if self.data["svg config"]["unit_type_labeled"]:
-//                 province_name = province_name[1:]
-//             province, coast = self._get_province_and_coast(province_name)
-//             self._set_province_unit(province, unit_data, coast)
+    pub fn get_province_and_coast(&mut self, mut province_name: String) -> (&Mutex<ProvinceInfo>, Option<CoastReference>) {
+        let mut coast_suffix = None;
+        let coast_names = [" (nc)", " (sc)", " (ec)", " (wc)"];
+
+        for coast_name in coast_names {
+            if province_name.ends_with(coast_name) {
+                province_name.truncate(province_name.len() - 5);
+
+                coast_suffix = Some(&coast_name[2..4]);
+                break
+            }
+        }
+
+        let province = self.name_to_province.get(province_name.as_str()).unwrap();
+        let mut coast = None;
+        if let Some(suffix) = coast_suffix {
+            if let Some(coasts) = &province.try_lock().unwrap().coasts {
+                for potential in coasts {
+                    if potential.name == format!("{} {}", province_name, suffix) {
+                        coast = Some(potential.to_reference())
+                    }
+                }
+            }
+        }
+
+        return (province, coast)
+    }
 
     pub fn process_provinces(&mut self, mut provinces: Vec<ProvinceInfo>) {
         let adjacencies_path = env::current_dir().unwrap().clone().join(format!("config/{}_adjacencies.txt", self.datafile).as_str()); 
@@ -435,7 +519,7 @@ impl Parser {
             let file = File::open(&adjacencies_path).unwrap();
             let mut lines = BufReader::new(file).lines();
             while let Some(Ok(line)) = lines.next() {
-                println!("{}", line);
+                // println!("{}", line);
                 let (a, b) = line.split_once(',').unwrap();
                 adjacencies.push((a.to_string(), b.to_string()));
             }
@@ -456,10 +540,6 @@ impl Parser {
             }
         }
 
-        println!("{:?}", adjacencies);
-
-        // todo actually instantiate provinceinfo
-
         for province in provinces {
             let name = &province.name;
             if self.name_to_province.contains_key(name) {
@@ -476,38 +556,22 @@ impl Parser {
 
             let mut a = self.name_to_province.get(&name1).unwrap().try_lock().unwrap();
             let mut b = self.name_to_province.get(&name2).unwrap().try_lock().unwrap();
-            a.adjacent.push(ProvinceReference::Name(b.name.clone()));
-            b.adjacent.push(ProvinceReference::Name(a.name.clone()));
+            a.adjacent.push(b.to_reference());
+            b.adjacent.push(a.to_reference());
         }
-
-        // def _get_adjacencies(self, provinces: set[Province]) -> set[tuple[str, str]]:
-        // adjacencies = set()
-        // try:
-        //     f = open(f"config/{self.datafile}_adjacencies.txt", "r")
-        // except FileNotFoundError:
-        //     with open(f"config/{self.datafile}_adjacencies.txt", "w") as f:
-        //         # Combinations so that we only have (A, B) and not (B, A) or (A, A)
-        //         for province1, province2 in itertools.combinations(provinces, 2):
-        //             if shapely.distance(province1.geometry, province2.geometry) < self.layers["border_margin_hint"]:
-        //                 adjacencies.add((province1.name, province2.name))
-        //                 f.write(f"{province1.name},{province2.name}\n")
-        // else:
-        //     for line in f:
-        //         adjacencies.add(tuple(line[:-1].split(',')))
-
-        // return adjacencies
-
 
 //         provinces = self.json_cheats(provinces)
 
-//         # set coasts
-//         for province in provinces:
-//             province.set_coasts()
-
-//             self._initialize_supply_centers_assisted()
-
-//         # set units
-//                 self._initialize_units_assisted()
+        for province in self.name_to_province.values() {
+            province.try_lock().unwrap().set_coasts(|p| {
+                match p {
+                    ProvinceReference::Name(name) => {
+                        self.name_to_province.get(name).unwrap()
+                    },
+                    ProvinceReference::Index(_) => panic!("Shouldn't occur"),
+                }
+            })
+        }
 
 //         # set phantom unit coordinates for optimal unit placements
 //         self._set_phantom_unit_coordinates()
@@ -520,7 +584,7 @@ impl Parser {
 //                 coast.all_rets.add(coast.retreat_unit_coordinate)
 
 //         return provinces
-}
+    }
 
     fn parse_province(
         &self,
@@ -529,7 +593,7 @@ impl Parser {
         layer_translation: &Transform
     ) -> ProvinceInfo {
         if province_data.local_name().as_ref() != b"path" {
-            panic!("Nonpath meow");
+            panic!("Province border has non path attribute");
         }
 
         let path_string = get_attribute(&province_data, "d").expect("Province path data not found");
@@ -568,34 +632,12 @@ impl Parser {
             has_supply_center: false,
             initial_owner: None,
             initial_core: None,
-            local_unit: None
+            initial_unit: None,
+            coasts: None,
         }
     }
 }
 
-//         for province in provinces:
-//             province.all_locs -= {None}
-//             province.all_rets -= {None}
-//             if province.primary_unit_coordinate == None:
-//                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
-//                 province.primary_unit_coordinate = (0, 0)
-//             if province.retreat_unit_coordinate == None:
-//                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
-//                 province.retreat_unit_coordinate = (0, 0)
-
-//         for province in provinces:
-//             for coast in province.coasts:
-//                 coast.all_locs -= {None}
-//                 coast.all_rets -= {None}
-//                 if coast.primary_unit_coordinate == None:
-//                     logger.warning(f"Province {coast.name} has no unit coord. Setting to 0,0 ...")
-//                     coast.primary_unit_coordinate = (0, 0)
-//                 if coast.retreat_unit_coordinate == None:
-//                     logger.warning(f"Province {coast.name} has no retreat coord. Setting to 0,0 ...")
-//                     coast.retreat_unit_coordinate = (0, 0)
-
-
-//         return Board(players, provinces, units, phase.initial(), self.data, self.datafile)
 
 //     def names_to_provinces(self, names: set[str]):
 //         return map((lambda n: self.name_to_province[n]), names)
@@ -671,29 +713,6 @@ impl Parser {
 
 //         return provinces
 
-//     def _set_province_unit(self, province: Province, unit_data: Element, coast: Coast = None) -> Unit:
-//         if province.unit:
-//             return
-//             raise RuntimeError(f"{province.name} already has a unit")
-
-//         unit_type = self._get_unit_type(unit_data)
-
-//         # assume that all starting units are on provinces colored in to their color
-//         player = province.owner
-//         if province.owner == None:
-//             raise Exception(f"{province.name} has a unit, but isn't owned by any country")
-
-//         # color_data = unit_data.findall(".//svg:path", namespaces=NAMESPACE)[0]
-//         # player = get_player(color_data, self.color_to_player)
-//         # TODO: (BETA) tech debt: let's pass the coast in instead of only passing in coast when province has multiple
-//         if not coast and unit_type == UnitType.FLEET:
-//             coast = next((coast for coast in province.coasts), None)
-
-//         unit = Unit(unit_type, player, province, coast, None)
-//         province.unit = unit
-//         unit.player.units.add(unit)
-//         return unit
-
 //     def _set_phantom_unit_coordinates(self) -> None:
 //         army_layer_to_key = [
 //             (self.phantom_primary_armies_layer, "primary_unit_coordinate"),
@@ -747,61 +766,3 @@ impl Parser {
 
 //     def _get_province(self, province_data: Element) -> Province:
 //         return self.name_to_province[self._get_province_name(province_data)]
-
-//     def _get_province_and_coast(self, province_name: str) -> tuple[Province, Coast | None]:
-//         coast_suffix: str | None = None
-//         coast_names = {" (nc)", " (sc)", " (ec)", " (wc)"}
-
-//         for coast_name in coast_names:
-//             if province_name[len(province_name) - 5 :] == coast_name:
-//                 province_name = province_name[: len(province_name) - 5]
-//                 coast_suffix = coast_name[2:4]
-//                 break
-
-//         province = self.name_to_province[province_name]
-//         coast = None
-//         if coast_suffix:
-//             coast = next((coast for coast in province.coasts if coast.name == f"{province_name} {coast_suffix}"), None)
-
-//         return province, coast
-
-//     # Returns province adjacency set
-//     def _get_adjacencies(self, provinces: set[Province]) -> set[tuple[str, str]]:
-//         adjacencies = set()
-
-//         # Combinations so that we only have (A, B) and not (B, A) or (A, A)
-//         for province1, province2 in itertools.combinations(provinces, 2):
-//             if shapely.distance(province1.geometry, province2.geometry) < self.layers["border_margin_hint"]:
-//                 adjacencies.add((province1.name, province2.name))
-//         # import matplotlib.pyplot as plt
-//         # for p in provinces:
-//         #     if isinstance(p.geometry, shapely.Polygon):
-//         #         plt.plot(*p.geometry.exterior.xy)
-//         #     else:
-//         #         for geo in p.geometry.geoms:
-//         #             plt.plot(*geo.exterior.xy)
-//         # plt.gca().invert_yaxis()
-//         # plt.show()
-//         return adjacencies
-
-//     def _get_unit_type(self, unit_data: Element) -> UnitType:
-//         if self.data["svg config"]["unit_type_labeled"]:
-//             name = self._get_province_name(unit_data)
-//             if name is None:
-//                 raise RuntimeError("Unit has no name, but unit_type_labeled = true")
-//             if name.lower().startswith("f"):
-//                 return UnitType.FLEET
-//             if name.lower().startswith("a"):
-//                 return UnitType.ARMY
-//             else:
-//                 raise RuntimeError(f"Unit types are labeled, but {name} doesn't start with F or A")
-//         unit_data = unit_data.findall(".//svg:path", namespaces=NAMESPACE)[0]
-//         num_sides = unit_data.get("{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}sides")
-//         if num_sides == "3":
-//             return UnitType.FLEET
-//         elif num_sides == "6":
-//             return UnitType.ARMY
-//         else:
-//             return UnitType.ARMY
-//             raise RuntimeError(f"Unit has {num_sides} sides which does not match any unit definition.")
-
