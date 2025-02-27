@@ -1,5 +1,5 @@
 
-use std::{fmt::Debug, ops::DerefMut, sync::{Arc, Mutex}};
+use std::{cell::RefCell, fmt::Debug, ops::DerefMut, sync::{Arc, Mutex}};
 
 use geo_types::Coord;
 use geos::Geometry;
@@ -95,7 +95,7 @@ impl ProvinceInfo {
     }
 
     pub fn set_coasts<'a, F>(&'a mut self, resolve: F) where 
-        F: Fn(&ProvinceReference) -> &'a Mutex<ProvinceInfo>
+        F: Fn(&ProvinceReference) -> &'a RefCell<ProvinceInfo>
      {
         // Externally set, i. e. by json_cheats()
         if self.coasts.is_some() {
@@ -104,52 +104,36 @@ impl ProvinceInfo {
 
         // seas don't have coasts
         if self.province_type == ProvinceType::SEA {
-            self.coasts = Some(Vec::new())
+            self.coasts = Some(Vec::new());
+            return;
         }
 
         let mut sea_provinces = Vec::new();
         for reference in &self.adjacent {
-            let province = resolve(&reference).try_lock().unwrap();
+            let province = resolve(&reference).borrow();
             if province.province_type == ProvinceType::SEA || province.province_type == ProvinceType::ISLAND {
                 sea_provinces.push(province.to_reference());
             }
         }
 
-        let name = format!("{} coast", self.name);
-        self.coasts = Some(vec![
-            Coast { 
-                name, 
-                adjacent_seas: sea_provinces, 
-                province: self.to_reference(),
-                coords: Coords { 
-                    all_locs: Vec::new(), 
-                    all_rets: Vec::new(),
-                    primary_unit_coordinate: None, 
-                    retreat_unit_coordinate: None
+        if sea_provinces.len() > 0 {
+            let name = format!("{} coast", self.name);
+            self.coasts = Some(vec![
+                Coast { 
+                    name, 
+                    adjacent_seas: sea_provinces, 
+                    province: self.to_reference(),
+                    coords: Coords { 
+                        all_locs: Vec::new(), 
+                        all_rets: Vec::new(),
+                        primary_unit_coordinate: None, 
+                        retreat_unit_coordinate: None
+                    }
                 }
-            }
-        ])        
-
-
-//         if self.type == ProvinceType.SEA:
-//             # seas don't have coasts
-//             return set()
-
-//         sea_provinces: set[Province] = set()
-//         for province in self.adjacent:
-//             # Islands do not break coasts
-//             if province.type == ProvinceType.SEA or province.type == ProvinceType.ISLAND:
-//                 sea_provinces.add(province)
-
-//         if len(sea_provinces) == 0:
-//             # this is not a coastal province
-//             return set()
-
-//         # TODO: (BETA) don't hardcode coasts
-
-//         for i, coast_set in enumerate(coast_sets):
-//             name = f"{self.name} coast"
-//             self.coasts.add(Coast(name, None, None, coast_set, self))
+            ])
+        } else {
+            self.coasts = Some(Vec::new())
+        }
     }
 
 }

@@ -32,7 +32,7 @@ impl Transform {
         Coord { x: x, y: y }
     }
 
-    pub fn inverse_tranform(&self, p: Coord) -> Coord {
+    pub fn inverse_transform(&self, p: Coord) -> Coord {
         let p = (p.x - self.x_c, p.y - self.y_c);
         let det = self.x_dx * self.y_dy - self.x_dy * self.y_dx; 
         let x = self.y_dy * p.0 - self.x_dy * p.1;

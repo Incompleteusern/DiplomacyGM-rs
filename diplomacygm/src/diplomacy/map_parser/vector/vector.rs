@@ -1,5 +1,5 @@
 
-use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
 
 use geo_types::Coord;
 use geos::{Geom, Geometry};
@@ -87,7 +87,7 @@ pub struct Parser {
     datafile: String,
     svg_path: PathBuf,
     color_to_player: HashMap<String, Option<Arc<PlayerInfo>>>,
-    name_to_province: HashMap<String, Mutex<ProvinceInfo>>,
+    name_to_province: HashMap<String, RefCell<ProvinceInfo>>,
     layer_info: LayerInfo,
     overrides: Option<Value>
 }
@@ -252,36 +252,16 @@ impl Parser {
                                 self.parse_island_fill_layer(&mut reader);
                             },
                             Layer::PhantomPrimaryArmiesLayer => {
-                                self.parse_phantom_army_layer(&mut reader, e, |m, f| {
-                                    let mut province = m.try_lock().unwrap();
-                                    province.coords.primary_unit_coordinate = Some(f);
-                                });
+                                self.parse_phantom_army_layer(&mut reader, e, false);
                             },
                             Layer::PhantomRetreatArmiesLayer => {
-                                self.parse_phantom_army_layer(&mut reader, e, |m, f| {
-                                    let mut province = m.try_lock().unwrap();
-                                    province.coords.retreat_unit_coordinate = Some(f);
-                                });
+                                self.parse_phantom_army_layer(&mut reader, e, true);
                             },
                             Layer::PhantomPrimaryFleetsLayer => {
-                                self.parse_phantom_fleet_layer(&mut reader, e, |m, c, f| {
-                                    let mut province = m.try_lock().unwrap();
-                                    if let Some(coast) = c {
-                                        province.resolve_reference(coast).coords.primary_unit_coordinate = Some(f);
-                                    } else {
-                                        province.coords.primary_unit_coordinate = Some(f);
-                                    }
-                                });
+                                self.parse_phantom_fleet_layer(&mut reader, e, false);
                             },
                             Layer::PhantomRetreatFleetsLayer => {
-                                self.parse_phantom_fleet_layer(&mut reader, e, |m, c, f| {
-                                    let mut province = m.try_lock().unwrap();
-                                    if let Some(coast) = c {
-                                        province.resolve_reference(coast).coords.retreat_unit_coordinate = Some(f);
-                                    } else {
-                                        province.coords.retreat_unit_coordinate = Some(f);
-                                    }
-                                });
+                                self.parse_phantom_fleet_layer(&mut reader, e, true);
                             },
                             Layer::None => depth += 1,
 
@@ -314,7 +294,7 @@ impl Parser {
         }
 
         for (name, province) in self.name_to_province.iter_mut() {
-            let mut province = province.try_lock().unwrap();
+            let mut province = province.borrow_mut();
             let coords = &mut province.coords;
 
             if coords.primary_unit_coordinate == None {
@@ -326,6 +306,23 @@ impl Parser {
                 println!("Province {} has no retreat coord. Setting to 0,0 ...", name);
                 //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
                 coords.retreat_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
+            }
+
+            if let Some(coasts) = &mut province.coasts {
+                for coast in coasts {
+                    let name = coast.name.clone();
+                    let coords = &mut coast.coords;
+                    if coords.primary_unit_coordinate == None {
+                        println!("Province {} has no unit coord. Setting to 0,0 ...", name);
+                        //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
+                        coords.primary_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
+                    }
+                    if coords.retreat_unit_coordinate == None {
+                        println!("Province {} has no retreat coord. Setting to 0,0 ...", name);
+                        //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
+                        coords.retreat_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
+                    }
+                }
             }
         }
 
@@ -411,7 +408,7 @@ impl Parser {
 
                     let province = self.name_to_province.get_mut(&name.into_owned()).expect("Unknown Province Name");
 
-                    province.try_lock().unwrap().initial_owner = get_player(&e, &self.color_to_player);
+                    province.borrow_mut().initial_owner = get_player(&e, &self.color_to_player);
                 },
                 _ => {}
             }
@@ -430,7 +427,7 @@ impl Parser {
                     if depth == 1 {
                         let name = get_inkspace_label(&e).into_owned();
 
-                        let mut province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str()).try_lock().unwrap();
+                        let mut province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str()).borrow_mut();
 
                         if province.has_supply_center {
                             panic!("{} already has a supply center", name)
@@ -478,7 +475,7 @@ impl Parser {
                         }
     
                         let (province, coast) = self.get_province_and_coast(name.clone());
-                        let mut province = province.try_lock().unwrap();
+                        let mut province = province.borrow_mut();
                         let player = province.initial_owner.as_ref().unwrap().clone();
 
                         let coast = if let Some(coast) = coast {
@@ -518,7 +515,7 @@ impl Parser {
         }
     }
 
-    fn parse_phantom_army_layer<F: Fn(&Mutex<ProvinceInfo>, Coord) -> ()>(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, setter: F) {
+    fn parse_phantom_army_layer(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, retreat: bool) {
         let mut depth: i32 = 0;
 
         let layer_transform = Transform::get_transform(&e);
@@ -539,8 +536,13 @@ impl Parser {
                 }
                 Ok(Event::End(_)) => {
                     if depth == 1 {
-                        let province = self.name_to_province.get(&name).unwrap();
-                        setter(province, layer_transform.transform(unit_translation.transform(coord)));
+                        let mut province = self.name_to_province.get(&name).unwrap().borrow_mut();
+                        let coord = Some(layer_transform.transform(unit_translation.transform(coord)));
+                        if retreat {
+                            province.coords.retreat_unit_coordinate = coord;
+                        } else {
+                            province.coords.primary_unit_coordinate = coord;
+                        }
                     }
                     depth -= 1;
                 },
@@ -558,7 +560,7 @@ impl Parser {
         }
     }
 
-    fn parse_phantom_fleet_layer<F: Fn(&Mutex<ProvinceInfo>, Option<CoastReference>, Coord) -> ()>(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, setter: F) {
+    fn parse_phantom_fleet_layer(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, retreat: bool) {
         let mut depth: i32 = 0;
 
         let layer_transform = Transform::get_transform(&e);
@@ -579,25 +581,38 @@ impl Parser {
                 }
                 Ok(Event::End(_)) => {
                     if depth == 1 {
-                        let (province_mutex, mut coast) = self.get_province_and_coast(name.clone());
-                        {
-                            let province = province_mutex.try_lock().unwrap();
-                            if coast.is_none() && province.province_type != ProvinceType::SEA {
-                                let is_coastal = province.adjacent.iter()
-                                .any(|f| self.resolve_reference(f).try_lock().unwrap().province_type != ProvinceType::LAND);
-                                // println!("{}", name);
-                                // println!("{}", is_coastal);
-                                if is_coastal {
-                                    if let Some(c) = province.coasts.as_ref().and_then(|f| f.iter().next()) {
-                                        coast = Some(c.to_reference());
-                                    } else {
-                                        panic!("Warning: phantom unit skipped, if drawing some move doesn't work this might be why: {}", name);
-                                    }
+                        let (province_cell, mut coast) = self.get_province_and_coast(name.clone());
+                    
+                        let mut province = province_cell.borrow_mut();
+                        if coast.is_none() && province.province_type != ProvinceType::SEA {
+                            let is_coastal = province.adjacent.iter()
+                            .any(|f| self.resolve_reference(f).borrow().province_type != ProvinceType::LAND);
+                            // println!("{}", name);
+                            // println!("{}", is_coastal);
+                            if is_coastal {
+                                if let Some(c) = province.coasts.as_ref().and_then(|f| f.iter().next()) {
+                                    coast = Some(c.to_reference());
+                                } else {
+                                    panic!("Warning: phantom unit skipped, if drawing some move doesn't work this might be why: {}", name);
                                 }
                             }
-                        };
+                        }
+
+                        let coord = Some(layer_transform.transform(unit_translation.transform(coord)));
                         
-                        setter(province_mutex, coast, layer_transform.transform(unit_translation.transform(coord)));
+                        if retreat {
+                            if let Some(coast) = coast {
+                                province.resolve_reference(coast).coords.primary_unit_coordinate = coord;
+                            } else {
+                                province.coords.primary_unit_coordinate = coord;
+                            }
+                        } else {
+                            if let Some(coast) = coast {
+                                province.resolve_reference(coast).coords.retreat_unit_coordinate = coord;
+                            } else {
+                                province.coords.retreat_unit_coordinate = coord;
+                            }
+                        }
                     }
 
                     depth -= 1;
@@ -616,7 +631,7 @@ impl Parser {
         }
     }
 
-    pub fn get_province_and_coast(&self, mut province_name: String) -> (&Mutex<ProvinceInfo>, Option<CoastReference>) {
+    pub fn get_province_and_coast(&self, mut province_name: String) -> (&RefCell<ProvinceInfo>, Option<CoastReference>) {
         let mut coast_suffix = None;
         let coast_names = [" (nc)", " (sc)", " (ec)", " (wc)"];
 
@@ -632,7 +647,7 @@ impl Parser {
         let province = self.name_to_province.get(province_name.as_str()).unwrap();
         let mut coast = None;
         if let Some(suffix) = coast_suffix {
-            if let Some(coasts) = &province.try_lock().unwrap().coasts {
+            if let Some(coasts) = &province.borrow().coasts {
                 for potential in coasts {
                     if potential.name == format!("{} {}", province_name, suffix) {
                         coast = Some(potential.to_reference())
@@ -680,7 +695,7 @@ impl Parser {
                 panic!("{} repeats in map,", province.name)
             }
 
-            self.name_to_province.insert(name.to_string(), Mutex::new(province));
+            self.name_to_province.insert(name.to_string(), RefCell::new(province));
         }
 
         for (name1, name2) in adjacencies {
@@ -688,8 +703,8 @@ impl Parser {
                 panic!("Adjacency has two of the same values")
             }
 
-            let mut a = self.name_to_province.get(&name1).unwrap().try_lock().unwrap();
-            let mut b = self.name_to_province.get(&name2).unwrap().try_lock().unwrap();
+            let mut a = self.name_to_province.get(&name1).unwrap().borrow_mut();
+            let mut b = self.name_to_province.get(&name2).unwrap().borrow_mut();
             a.adjacent.push(b.to_reference());
             b.adjacent.push(a.to_reference());
         }
@@ -697,7 +712,7 @@ impl Parser {
         self.json_cheats();
 
         for province in self.name_to_province.values() {
-            province.try_lock().unwrap().set_coasts(|p| self.resolve_reference(p))
+            province.borrow_mut().set_coasts(|p| self.resolve_reference(p))
         }
 //         # set phantom unit coordinates for optimal unit placements
 //         self._set_phantom_unit_coordinates()
@@ -712,7 +727,7 @@ impl Parser {
 //         return provinces
     }
 
-    fn resolve_reference(&self, p: &ProvinceReference) -> &Mutex<ProvinceInfo> {
+    fn resolve_reference(&self, p: &ProvinceReference) -> &RefCell<ProvinceInfo> {
         match p {
             ProvinceReference::Name(name) => {
                 self.name_to_province.get(name).unwrap()
@@ -766,7 +781,7 @@ impl Parser {
                     if self.name_to_province.contains_key(&high_name) {
                         panic!("{} repeats in map,", high_name);
                     }
-                    self.name_to_province.insert(high_name, Mutex::new(high_province));
+                    self.name_to_province.insert(high_name, RefCell::new(high_province));
                 }
                 // println!("{:?}", data);
             }
@@ -777,7 +792,7 @@ impl Parser {
                     .iter().map(|f| f.as_str().unwrap())
                     .map(|f| {
                         if let Some(p) = self.name_to_province.get(f) {
-                            p.try_lock().unwrap().to_reference()
+                            p.borrow().to_reference()
                         } else {
                             panic!("Unknown key {}", f)
                         }
@@ -786,14 +801,14 @@ impl Parser {
                 for index in 1..=num {
                     let high_name = name.to_owned() + &index.to_string();
 
-                    high_provinces.push(self.name_to_province.get(&high_name).unwrap().try_lock().unwrap().to_reference());
+                    high_provinces.push(self.name_to_province.get(&high_name).unwrap().borrow().to_reference());
                 }
 
                 // add adjacencies of high provinces
                 for high_province in &high_provinces {
                     for adjacent_province in &adjacent_provinces {
-                        let mut a = self.resolve_reference(high_province).try_lock().unwrap();
-                        let mut b = self.resolve_reference(adjacent_province).try_lock().unwrap();
+                        let mut a = self.resolve_reference(high_province).borrow_mut();
+                        let mut b = self.resolve_reference(adjacent_province).borrow_mut();
 
                         a.adjacent.push(b.to_reference());
                         b.adjacent.push(a.to_reference());
@@ -804,7 +819,7 @@ impl Parser {
                 for a in &high_provinces {
                     for b in &high_provinces {
                         if a != b {
-                            self.resolve_reference(a).try_lock().unwrap().adjacent.push(b.clone());
+                            self.resolve_reference(a).borrow_mut().adjacent.push(b.clone());
                         }
                     }
                 }
@@ -813,7 +828,7 @@ impl Parser {
 
         if let Some(provinces) = overrides.get("provinces").and_then(|f| f.as_object()) {
             for (name, data) in provinces {
-                let mut province: std::sync::MutexGuard<'_, ProvinceInfo> = self.name_to_province.get(name).unwrap().try_lock().unwrap();
+                let mut province = self.name_to_province.get(name).unwrap().borrow_mut();
                 println!("{:?}", name);
                 println!("{:?}", data);
 
@@ -821,7 +836,7 @@ impl Parser {
                     let mut to_add: Vec<ProvinceReference> = adjacencies.iter()
                         .map(|f| f.as_str().unwrap()).map(|f| {
                             if let Some(p) = self.name_to_province.get(f) {
-                                p.try_lock().unwrap().to_reference()
+                                p.borrow().to_reference()
                             } else {
                                 panic!("Unknown key {}", f)
                             }        
@@ -832,7 +847,7 @@ impl Parser {
                     let to_remove: Vec<ProvinceReference> = remove_adjacencies.iter()
                         .map(|f| f.as_str().unwrap()).map(|f| {
                             if let Some(p) = self.name_to_province.get(f) {
-                                p.try_lock().unwrap().to_reference()
+                                p.borrow().to_reference()
                             } else {
                                 panic!("Unknown key {}", f)
                             }        
@@ -846,7 +861,7 @@ impl Parser {
                         let adjacent_seas: Vec<ProvinceReference> = coast_adjacent.as_array().unwrap()
                             .iter().map(|f| f.as_str().unwrap()).map(|f| {
                                 if let Some(p) = self.name_to_province.get(f) {
-                                    p.try_lock().unwrap().to_reference()
+                                    p.borrow().to_reference()
                                 } else {
                                     panic!("Unknown key {}", f)
                                 }        
