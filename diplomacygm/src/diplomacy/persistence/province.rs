@@ -35,7 +35,7 @@ pub enum CoastReference {
 }
 
 // name is used while parsing, index is used when done
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProvinceReference {
     Name(String),
     Index(usize)
@@ -57,7 +57,7 @@ pub struct ProvinceInfo {
     pub initial_owner: Option<Arc<PlayerInfo>>,
     pub initial_core: Option<Arc<PlayerInfo>>,
     pub initial_unit: Option<Unit>,
-    pub geometry: Geometry,
+    pub geometry: Option<Geometry>,
     pub coasts: Option<Vec<Coast>>
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
