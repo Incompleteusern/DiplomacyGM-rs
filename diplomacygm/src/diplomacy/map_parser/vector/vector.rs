@@ -27,13 +27,14 @@
 
 use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
 
+use geo_types::Coord;
 use geos::{Geom, Geometry};
 use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
 use tracing_subscriber::fmt::layer;
 
-use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::{Player, PlayerInfo}, province::{self, Coast, CoastReference, Province, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
+use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::{Player, PlayerInfo}, province::{self, Coast, CoastReference, Coords, Province, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
 
 use super::utils::{get_attribute, get_inkspace_label, get_player, parse_path};
 
@@ -627,6 +628,12 @@ impl Parser {
                         initial_unit: None,
                         geometry: None,
                         coasts: None,
+                        coords: Coords {
+                            all_locs: Vec::new(),
+                            all_rets: Vec::new(),
+                            primary_unit_coordinate: None,
+                            retreat_unit_coordinate: None,
+                        }
                     };
 
                     high_provinces.push(high_province.to_reference());
@@ -657,8 +664,6 @@ impl Parser {
                     high_provinces.push(self.name_to_province.get(&high_name).unwrap().try_lock().unwrap().to_reference());
                 }
 
-                // println!("{:?}", data);
-
                 // add adjacencies of high provinces
                 for high_province in &high_provinces {
                     for adjacent_province in &adjacent_provinces {
@@ -683,68 +688,76 @@ impl Parser {
 
         if let Some(provinces) = overrides.get("provinces").and_then(|f| f.as_object()) {
             for (name, data) in provinces {
-                let province = self.name_to_province.get(name).unwrap();
+                let mut province: std::sync::MutexGuard<'_, ProvinceInfo> = self.name_to_province.get(name).unwrap().try_lock().unwrap();
                 println!("{:?}", name);
                 println!("{:?}", data);
 
                 if let Some(adjacencies) = data.get("adjacencies").and_then(|f| f.as_array()) {
-                    todo!();
+                    let mut to_add: Vec<ProvinceReference> = adjacencies.iter()
+                        .map(|f| f.as_str().unwrap()).map(|f| {
+                            if let Some(p) = self.name_to_province.get(f) {
+                                p.try_lock().unwrap().to_reference()
+                            } else {
+                                panic!("Unknown key {}", f)
+                            }        
+                        }).collect();
+                    province.adjacent.append(&mut to_add);
                 }
                 if let Some(remove_adjacencies) = data.get("remove_adjacencies").and_then(|f| f.as_array()) {
-                    todo!();
+                    let to_remove: Vec<ProvinceReference> = remove_adjacencies.iter()
+                        .map(|f| f.as_str().unwrap()).map(|f| {
+                            if let Some(p) = self.name_to_province.get(f) {
+                                p.try_lock().unwrap().to_reference()
+                            } else {
+                                panic!("Unknown key {}", f)
+                            }        
+                        }).collect();
+                    province.adjacent = province.adjacent.iter().filter(|f| !to_remove.contains(f))
+                        .map(|f| f.clone()).collect();
                 }
-                if let Some(coasts) = data.get("coasts").and_then(|f| f.as_object()) {
-                    todo!();
-                }
-                if let Some(unit_locs) = data.get("unit_loc").and_then(|f| f.as_array()) {
-                    todo!();
-                    println!("{:?}", unit_locs);
-                    for coordinate in unit_locs {
-
+                if let Some(coasts_map) = data.get("coasts").and_then(|f| f.as_object()) {
+                    let mut coasts = Vec::new();
+                    for (coast_name, coast_adjacent) in coasts_map {
+                        let adjacent_seas: Vec<ProvinceReference> = coast_adjacent.as_array().unwrap()
+                            .iter().map(|f| f.as_str().unwrap()).map(|f| {
+                                if let Some(p) = self.name_to_province.get(f) {
+                                    p.try_lock().unwrap().to_reference()
+                                } else {
+                                    panic!("Unknown key {}", f)
+                                }        
+                            }).collect();
+                        let coast = Coast {
+                            name: format!("{} {}", name, coast_name),
+                            adjacent_seas,
+                            province: province.to_reference(),
+                        };
+                        coasts.push(coast);
                     }
 
-//                     for coordinate in data["unit_loc"]:
-//                         coordinate = tuple((tuple(coordinate) + offset).tolist())
-//                         province.all_locs.add(coordinate)
-//                         province.primary_unit_coordinate = coordinate
-
-                    
+                    province.coasts = Some(coasts);
+                }
+                if let Some(unit_locs) = data.get("unit_loc").and_then(|f| f.as_array()) {
+                    for coordinate in unit_locs {
+                        let a = coordinate.as_array().unwrap();
+                        let x = a[0].as_f64().unwrap();
+                        let y = a[1].as_f64().unwrap();
+                        let coord = Coord { x: x + self.layer_info.loc_x_offset , y: y + self.layer_info.loc_y_offset };
+                        province.coords.all_locs.push(coord.clone());
+                        province.coords.primary_unit_coordinate = Some(coord);
+                    }                    
                 }
                 if let Some(retreat_unit_locs) = data.get("unit_loc").and_then(|f| f.as_array()) {
-                    todo!();
+                    for coordinate in retreat_unit_locs {
+                        let a = coordinate.as_array().unwrap();
+                        let x = a[0].as_f64().unwrap();
+                        let y = a[1].as_f64().unwrap();
+                        let coord = Coord { x: x + self.layer_info.loc_x_offset , y: y + self.layer_info.loc_y_offset };
+                        province.coords.all_rets.push(coord.clone());
+                        province.coords.retreat_unit_coordinate = Some(coord);
+                    }                    
                 }
-
             }
         }
-
-
-
-//         if "provinces" in self.data["overrides"]:
-//             for name, data in self.data["overrides"]["provinces"].items():
-//                 province = self.name_to_province[name]
-//                 # TODO: Some way to specifiy whether or not to clear other adjacencies?
-//                 if "adjacencies" in data:
-//                     province.adjacent.update(self.names_to_provinces(data["adjacencies"]))
-//                 if "remove_adjacencies" in data:
-//                     province.adjacent.difference_update(self.names_to_provinces(data["remove_adjacencies"]))
-//                 if "coasts" in data:
-//                     province.coasts = set()
-//                     for coast_name, coast_adjacent in data["coasts"].items():
-//                         coast = Coast(f"{name} {coast_name}", None, None, set(self.names_to_provinces(coast_adjacent)), province)
-//                         province.coasts.add(coast)
-//                 if "unit_loc" in data:
-//                     for coordinate in data["unit_loc"]:
-//                         coordinate = tuple((tuple(coordinate) + offset).tolist())
-//                         province.all_locs.add(coordinate)
-//                         province.primary_unit_coordinate = coordinate
-//                 if "retreat_unit_loc" in data:
-//                     for coordinate in data["retreat_unit_loc"]:
-//                         coordinate = tuple((tuple(coordinate) + offset).tolist())
-//                         province.all_rets.add(coordinate)
-//                         province.retreat_unit_coordinate = coordinate
-
-//         return provinces
-        
     }
 
     fn parse_province(
@@ -795,19 +808,16 @@ impl Parser {
             initial_core: None,
             initial_unit: None,
             coasts: None,
+            coords: Coords { 
+                all_locs: Vec::new(), 
+                all_rets: Vec::new(),
+                primary_unit_coordinate: None, 
+                retreat_unit_coordinate: None
+            }
         }
     }
 }
 
-
-//     def names_to_provinces(self, names: set[str]):
-//         return map((lambda n: self.name_to_province[n]), names)
-
-//     def add_province_to_board(self, provinces: set[Province], province: Province) -> set[Province]:
-//         provinces = {x for x in provinces if x.name != province.name}
-//         provinces.add(province)
-//         self.name_to_province[province.name] = province
-//         return provinces
 
 //     def _set_phantom_unit_coordinates(self) -> None:
 //         army_layer_to_key = [
@@ -856,9 +866,3 @@ impl Parser {
 //                     setattr(coast, province_key, translated_coordinate)
 //                 else:
 //                     setattr(province, province_key, translated_coordinate)
-
-//     def _get_province_name(self, province_data: Element) -> str:
-//         return province_data.get(f"{NAMESPACE.get('inkscape')}label")
-
-//     def _get_province(self, province_data: Element) -> Province:
-//         return self.name_to_province[self._get_province_name(province_data)]

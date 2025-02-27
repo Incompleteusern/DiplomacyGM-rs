@@ -1,6 +1,7 @@
 
 use std::{fmt::Debug, ops::DerefMut, sync::{Arc, Mutex}};
 
+use geo_types::Coord;
 use geos::Geometry;
 
 use super::{player::{Player, PlayerInfo}, unit::Unit};
@@ -48,6 +49,13 @@ pub enum ProvinceType {
     SEA
 }
 
+pub struct Coords {
+    pub all_locs: Vec<Coord<f64>>,
+    pub all_rets: Vec<Coord<f64>>,
+    pub primary_unit_coordinate: Option<Coord<f64>>,
+    pub retreat_unit_coordinate: Option<Coord<f64>>,
+}
+
 // TODO make sure when dropping that all adjacencies are cleared
 pub struct ProvinceInfo {
     pub name: String,
@@ -58,10 +66,8 @@ pub struct ProvinceInfo {
     pub initial_core: Option<Arc<PlayerInfo>>,
     pub initial_unit: Option<Unit>,
     pub geometry: Option<Geometry>,
-    pub coasts: Option<Vec<Coast>>
-//         primary_unit_coordinate: tuple[float, float],
-//         retreat_unit_coordinate: tuple[float, float],
-//         coasts: set[Coast],
+    pub coasts: Option<Vec<Coast>>,
+    pub coords: Coords
 }
 
 impl ProvinceInfo {
