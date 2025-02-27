@@ -25,14 +25,14 @@
 
 // logger = logging.getLogger(__name__)
 
-use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
 
 use geos::{Geom, Geometry};
 use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
 
-use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string}}, persistence::{player::{Player, PlayerInfo}, province::{self, Province, ProvinceInfo, ProvinceType}}};
+use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string}}, persistence::{player::{Player, PlayerInfo}, province::{self, Province, ProvinceInfo, ProvinceReference, ProvinceType}}};
 
 use super::utils::{get_attribute, get_inkspace_label, get_player, parse_path};
 
@@ -99,7 +99,7 @@ pub struct Parser {
     datafile: String,
     svg_path: PathBuf,
     color_to_player: HashMap<String, Option<Arc<PlayerInfo>>>,
-    name_to_province: HashMap<String, ProvinceInfo>,
+    name_to_province: HashMap<String, Mutex<ProvinceInfo>>,
     layer_info: LayerInfo,
     // cache_provinces: Option<HashSet<Province>>,
     // cache_adjacencies: Option<HashSet<(String, String)>>
@@ -289,9 +289,9 @@ impl Parser {
             }
         }
 
-        // for province in self.name_to_province.values() {
-        //     println!("{:?}", province);
-        // }
+        for province in self.name_to_province.values() {
+            println!("{:?}", province);
+        }
 
     }
 
@@ -345,7 +345,7 @@ impl Parser {
 
                     let province = self.name_to_province.get_mut(&name.into_owned()).expect("Unknown Province Name");
 
-                    province.initial_owner = get_player(&e, &self.color_to_player);
+                    province.try_lock().unwrap().initial_owner = get_player(&e, &self.color_to_player);
                 },
                 _ => {}
             }
@@ -364,7 +364,7 @@ impl Parser {
                     if depth == 1 {
                         let name = get_inkspace_label(&e).into_owned();
 
-                        let province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str());
+                        let mut province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str()).try_lock().unwrap();
 
                         if province.has_supply_center {
                             panic!("{} already has a supply center", name)
@@ -449,7 +449,6 @@ impl Parser {
 
                 for b in right {
                     if a.geometry.distance(&b.geometry).unwrap() < self.layer_info.border_margin_hint {
-                        // a.adjacent.push(Arc::clone(&b));
                         writeln!(&mut writer, "{},{}", a.name, b.name).unwrap();
                         adjacencies.push((a.name.clone(), b.name.clone()));
                     }
@@ -467,9 +466,19 @@ impl Parser {
                 panic!("{} repeats in map, ignoring...", province.name)
             }
 
-            self.name_to_province.insert(name.to_string(), province);
+            self.name_to_province.insert(name.to_string(), Mutex::new(province));
         }
 
+        for (name1, name2) in adjacencies {
+            if name1 == name2 {
+                panic!("Adjacency has two of the same values")
+            }
+
+            let mut a = self.name_to_province.get(&name1).unwrap().try_lock().unwrap();
+            let mut b = self.name_to_province.get(&name2).unwrap().try_lock().unwrap();
+            a.adjacent.push(ProvinceReference::Name(b.name.clone()));
+            b.adjacent.push(ProvinceReference::Name(a.name.clone()));
+        }
 
         // def _get_adjacencies(self, provinces: set[Province]) -> set[tuple[str, str]]:
         // adjacencies = set()

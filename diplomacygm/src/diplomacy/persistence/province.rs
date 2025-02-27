@@ -1,5 +1,5 @@
 
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::{Arc, Mutex}};
 
 use geos::Geometry;
 
@@ -27,6 +27,13 @@ impl Location {
     }
 }
 
+// name is used while parsing, index is used when done
+#[derive(Debug)]
+pub enum ProvinceReference {
+    Name(String),
+    Index(usize)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProvinceType {
     LAND,
@@ -34,12 +41,11 @@ pub enum ProvinceType {
     SEA
 }
 
-
 // TODO make sure when dropping that all adjacencies are cleared
 pub struct ProvinceInfo {
     pub name: String,
     pub province_type: ProvinceType,
-    pub adjacent: Vec<Arc<ProvinceInfo>>,
+    pub adjacent: Vec<ProvinceReference>,
     pub has_supply_center: bool,
     pub initial_owner: Option<Arc<PlayerInfo>>,
     pub initial_core: Option<Arc<PlayerInfo>>,
