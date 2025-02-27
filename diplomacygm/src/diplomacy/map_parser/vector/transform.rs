@@ -68,7 +68,7 @@ impl Transform {
                 let re = Regex::new(r"^\s*matrix\(([^,]*),([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)\)\s*$").unwrap();
                 let m = re.captures(&s).expect("Matrix transform not found");
 
-                Self::matrix(get_float(&m, 1), get_float(&m, 2), get_float(&m, 3), get_float(&m, 4), get_float(&m, 5), get_float(&m, 6))
+                Self::matrix(get_float(&m, 1), get_float(&m, 4), get_float(&m, 3), get_float(&m, 2), get_float(&m, 5), get_float(&m, 6))
             } else {
                 panic!("Unknown tranform: {}", s)
             }

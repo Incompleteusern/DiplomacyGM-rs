@@ -6,6 +6,8 @@ pub const NAMESPACE_SVG: &str = "http://www.w3.org/2000/svg";
 
 pub const INKSPACE_LABEL: &str = "inkscape:label";
 pub const SODIPODI_SIDES: &str = "sodipodi:sides";
+pub const SODIPODI_CX: &str = "sodipodi:cx";
+pub const SODIPODI_CY: &str = "sodipodi:cy";
 
 // logger = logging.getLogger(__name__)
 
@@ -79,6 +81,17 @@ pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
 
 // def get_player(element: Element, color_to_player: dict[str, Player]) -> Player:
 //     return color_to_player[get_element_color(element)]
+
+pub fn get_unit_coordinates(e: &BytesStart<'_>) -> Coord {
+    let x = get_attribute(e, SODIPODI_CX).map(|f| f.into_owned().parse::<f64>().unwrap());
+    let y = get_attribute(e, SODIPODI_CY).map(|f| f.into_owned().parse::<f64>().unwrap());
+
+    if x.is_none() || y.is_none() {
+        todo!();
+    }
+
+    return Transform::get_transform(e).transform(Coord { x: x.unwrap(), y: y.unwrap() });
+}
 
 // def get_unit_coordinates(
 //     unit_data: Element,

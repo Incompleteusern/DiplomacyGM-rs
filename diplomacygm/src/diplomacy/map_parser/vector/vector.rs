@@ -1,29 +1,3 @@
-// import copy
-// import itertools
-// import json
-// import logging
-// import time
-// import numpy as np
-// from typing import Callable
-// from xml.etree.ElementTree import Element
-
-// import shapely
-// from lxml import etree
-// from shapely.geometry import Point
-
-// from diplomacy.map_parser.vector.transform import get_transform
-// from diplomacy.map_parser.vector.utils i`mport get_player, get_unit_coordinates, get_svg_element, parse_path
-// from diplomacy.persistence import phase
-// from diplomacy.persistence.board import Board
-// from diplomacy.persistence.player import Player
-// from diplomacy.persistence.province import Province, ProvinceType, Coast
-// from diplomacy.persistence.unit import Unit, UnitType
-
-// # TODO: (BETA) all attribute getting should be in utils which we import and call utils.my_unit()
-// # TODO: (BETA) consistent in bracket formatting
-
-
-// logger = logging.getLogger(__name__)
 
 use std::{borrow::Cow, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
 
@@ -32,11 +6,10 @@ use geos::{Geom, Geometry};
 use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
-use tracing_subscriber::fmt::layer;
 
-use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::{Player, PlayerInfo}, province::{self, Coast, CoastReference, Coords, Province, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
+use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::PlayerInfo, province::{Coast, CoastReference, Coords, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
 
-use super::utils::{get_attribute, get_inkspace_label, get_player, parse_path};
+use super::utils::{get_attribute, get_inkspace_label, get_player, get_unit_coordinates, parse_path};
 
 
 
@@ -49,7 +22,11 @@ enum Layer {
     SeaLayer,
     NamesLayer,
     CentersLayer,
-    UnitsLayer
+    UnitsLayer,
+    PhantomPrimaryArmiesLayer,
+    PhantomRetreatArmiesLayer,
+    PhantomPrimaryFleetsLayer,
+    PhantomRetreatFleetsLayer
 }
 
 pub struct LayerInfo {
@@ -60,10 +37,10 @@ pub struct LayerInfo {
     names_layer: String,
     centers_layer: String,
     units_layer: Option<String>,
-    // phantom_primary_armies_layer: String, 
-    // phantom_retreat_armies_layer: String, 
-    // phantom_primary_fleets_layer: String, 
-    // phantom_retreat_fleets_layer: String, 
+    phantom_primary_armies_layer: String, 
+    phantom_retreat_armies_layer: String, 
+    phantom_primary_fleets_layer: String, 
+    phantom_retreat_fleets_layer: String, 
     province_labels: bool,
     unit_labels: bool,
     center_labels: bool,
@@ -89,7 +66,15 @@ impl LayerInfo {
             Layer::NamesLayer
         } else if id == self.centers_layer {
             Layer::CentersLayer
-        } else if Some(id.to_string()) == self.units_layer {
+        } else if id == self.phantom_primary_armies_layer {
+            Layer::PhantomPrimaryArmiesLayer
+        } else if id == self.phantom_retreat_armies_layer {
+            Layer::PhantomRetreatArmiesLayer
+        } else if id == self.phantom_primary_fleets_layer {
+            Layer::PhantomPrimaryFleetsLayer
+        } else if id == self.phantom_retreat_fleets_layer {
+            Layer::PhantomRetreatFleetsLayer
+        }else if Some(id.to_string()) == self.units_layer {
             Layer::UnitsLayer
         } else {
             Layer::None
@@ -104,12 +89,10 @@ pub struct Parser {
     color_to_player: HashMap<String, Option<Arc<PlayerInfo>>>,
     name_to_province: HashMap<String, Mutex<ProvinceInfo>>,
     layer_info: LayerInfo,
-    // cache_provinces: Option<HashSet<Province>>,
-    // cache_adjacencies: Option<HashSet<(String, String)>>
     overrides: Option<Value>
 }
 
-// requires reodering island adjacencies to occur before island fill shrug
+// requires reordering island adjacencies to occur before island fill shrug if that is ever used for names
 impl Parser {
     pub fn new(data: String) -> Parser {
         let datafile = data;
@@ -143,6 +126,10 @@ impl Parser {
                 None
             }
         };
+        let phantom_primary_armies_layer = get_json_string(layers, "army").to_string();
+        let phantom_retreat_armies_layer = get_json_string(layers, "retreat_army").to_string();
+        let phantom_primary_fleets_layer = get_json_string(layers, "fleet").to_string();
+        let phantom_retreat_fleets_layer = get_json_string(layers, "retreat_fleet").to_string();
 
         let loc_x_offset = layers.get("loc_x_offset").and_then(|f| f.as_f64()).unwrap_or(0.0);
         let loc_y_offset = layers.get("loc_y_offset").and_then(|f| f.as_f64()).unwrap_or(0.0);
@@ -182,6 +169,11 @@ impl Parser {
                 names_layer,
                 centers_layer,
                 units_layer,
+                phantom_primary_armies_layer,
+                phantom_retreat_armies_layer,
+                phantom_primary_fleets_layer,
+                phantom_retreat_fleets_layer,
+
                 unit_type_labeled,
                 province_labels,
                 center_labels,
@@ -195,10 +187,6 @@ impl Parser {
             overrides
         }
 
-        // let phantom_primary_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "army")).unwrap();
-        // let phantom_retreat_armies_layer = get_svg_element(&svg_root, get_json_string(layers, "retreat_army")).unwrap();
-        // let phantom_primary_fleets_layer = get_svg_element(&svg_root, get_json_string(layers, "fleet")).unwrap();
-        // let phantom_retreat_fleets_layer: Group = get_svg_element(&svg_root, get_json_string(layers, "retreat_fleet")).unwrap();
     }
 
     pub fn parse(&mut self) {
@@ -260,9 +248,40 @@ impl Parser {
                                     todo!("support units layer")
                                 }
                             },
-
                             Layer::IslandFillLayer => {
                                 self.parse_island_fill_layer(&mut reader);
+                            },
+                            Layer::PhantomPrimaryArmiesLayer => {
+                                self.parse_phantom_army_layer(&mut reader, e, |m, f| {
+                                    let mut province = m.try_lock().unwrap();
+                                    province.coords.primary_unit_coordinate = Some(f);
+                                });
+                            },
+                            Layer::PhantomRetreatArmiesLayer => {
+                                self.parse_phantom_army_layer(&mut reader, e, |m, f| {
+                                    let mut province = m.try_lock().unwrap();
+                                    province.coords.retreat_unit_coordinate = Some(f);
+                                });
+                            },
+                            Layer::PhantomPrimaryFleetsLayer => {
+                                self.parse_phantom_fleet_layer(&mut reader, e, |m, c, f| {
+                                    let mut province = m.try_lock().unwrap();
+                                    if let Some(coast) = c {
+                                        province.resolve_reference(coast).coords.primary_unit_coordinate = Some(f);
+                                    } else {
+                                        province.coords.primary_unit_coordinate = Some(f);
+                                    }
+                                });
+                            },
+                            Layer::PhantomRetreatFleetsLayer => {
+                                self.parse_phantom_fleet_layer(&mut reader, e, |m, c, f| {
+                                    let mut province = m.try_lock().unwrap();
+                                    if let Some(coast) = c {
+                                        province.resolve_reference(coast).coords.retreat_unit_coordinate = Some(f);
+                                    } else {
+                                        province.coords.retreat_unit_coordinate = Some(f);
+                                    }
+                                });
                             },
                             Layer::None => depth += 1,
 
@@ -294,6 +313,22 @@ impl Parser {
             }
         }
 
+        for (name, province) in self.name_to_province.iter_mut() {
+            let mut province = province.try_lock().unwrap();
+            let coords = &mut province.coords;
+
+            if coords.primary_unit_coordinate == None {
+                println!("Province {} has no unit coord. Setting to 0,0 ...", name);
+                //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
+                coords.primary_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
+            }
+            if coords.retreat_unit_coordinate == None {
+                println!("Province {} has no retreat coord. Setting to 0,0 ...", name);
+                //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
+                coords.retreat_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
+            }
+        }
+
         //         for province in provinces:
         //             province.all_locs -= {None}
         //             province.all_rets -= {None}
@@ -320,9 +355,9 @@ impl Parser {
 
         // todo create provinces array index and reference using index
 
-        for province in self.name_to_province.values() {
-            println!("{:?}", province);
-        }
+        // for province in self.name_to_province.values() {
+        //     println!("{:?}", province);
+        // }
 
     }
 
@@ -415,7 +450,7 @@ impl Parser {
     }
 
     pub fn parse_units_assisted(&mut self, reader: &mut Reader<&[u8]>) {
-        let mut depth = 0;
+        let mut depth: i32 = 0;
 
         let mut unit_type = UnitType::ARMY;
         let mut name = String::from("");
@@ -429,8 +464,6 @@ impl Parser {
                     if depth == 1 {
                         name = get_inkspace_label(&e).into_owned();
                     }
-
-                    // if get
                 }
                 Ok(Event::End(_)) => {
                     if depth == 1 {
@@ -454,12 +487,6 @@ impl Parser {
                             province.coasts.as_ref().map(|f| f.iter().next()).flatten()
                                 .map(|f| f.to_reference())
                         };
-
-                        // println!("_____________________");
-                        // println!("{}", name);
-                        // println!("{:?}", player);
-                        // println!("{:?}", unit_type);
-                        // println!("_____________________");
 
                         province.initial_unit = Some(Unit {
                             unit_type: unit_type.clone(),
@@ -491,7 +518,105 @@ impl Parser {
         }
     }
 
-    pub fn get_province_and_coast(&mut self, mut province_name: String) -> (&Mutex<ProvinceInfo>, Option<CoastReference>) {
+    fn parse_phantom_army_layer<F: Fn(&Mutex<ProvinceInfo>, Coord) -> ()>(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, setter: F) {
+        let mut depth: i32 = 0;
+
+        let layer_transform = Transform::get_transform(&e);
+        let mut unit_translation = Transform::empty();
+        let mut name = String::from("");
+        let mut coord = Coord { x: 0.0, y: 0.0};
+
+        while depth >= 0 {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(e)) => {
+                    depth += 1;
+                    if depth == 1 {
+                        unit_translation = Transform::get_transform(&e);
+                        name = get_inkspace_label(&e).into_owned();
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    if depth == 1 {
+                        let province = self.name_to_province.get(&name).unwrap();
+                        setter(province, layer_transform.transform(unit_translation.transform(coord)));
+                    }
+                    depth -= 1;
+                },
+                Ok(Event::Empty(e)) => {
+                    if depth == 0 {
+                        panic!("Unknown thing to handle");
+                    }
+
+                    if e.local_name().as_ref() == b"path" {
+                        coord = get_unit_coordinates(&e);
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+
+    fn parse_phantom_fleet_layer<F: Fn(&Mutex<ProvinceInfo>, Option<CoastReference>, Coord) -> ()>(&mut self, reader: &mut Reader<&[u8]>, e: BytesStart, setter: F) {
+        let mut depth: i32 = 0;
+
+        let layer_transform = Transform::get_transform(&e);
+        let mut unit_translation = Transform::empty();
+        let mut name = String::from("");
+        let mut coord = Coord { x: 0.0, y: 0.0};
+
+        while depth >= 0 {
+            match reader.read_event() {
+                Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e), // TODO proper
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(e)) => {
+                    depth += 1;
+                    if depth == 1 {
+                        unit_translation = Transform::get_transform(&e);
+                        name = get_inkspace_label(&e).into_owned();
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    if depth == 1 {
+                        let (province_mutex, mut coast) = self.get_province_and_coast(name.clone());
+                        {
+                            let province = province_mutex.try_lock().unwrap();
+                            if coast.is_none() && province.province_type != ProvinceType::SEA {
+                                let is_coastal = province.adjacent.iter()
+                                .any(|f| self.resolve_reference(f).try_lock().unwrap().province_type != ProvinceType::LAND);
+                                // println!("{}", name);
+                                // println!("{}", is_coastal);
+                                if is_coastal {
+                                    if let Some(c) = province.coasts.as_ref().and_then(|f| f.iter().next()) {
+                                        coast = Some(c.to_reference());
+                                    } else {
+                                        panic!("Warning: phantom unit skipped, if drawing some move doesn't work this might be why: {}", name);
+                                    }
+                                }
+                            }
+                        };
+                        
+                        setter(province_mutex, coast, layer_transform.transform(unit_translation.transform(coord)));
+                    }
+
+                    depth -= 1;
+                },
+                Ok(Event::Empty(e)) => {
+                    if depth == 0 {
+                        panic!("Unknown thing to handle");
+                    }
+
+                    if e.local_name().as_ref() == b"path" {
+                        coord = get_unit_coordinates(&e);
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+
+    pub fn get_province_and_coast(&self, mut province_name: String) -> (&Mutex<ProvinceInfo>, Option<CoastReference>) {
         let mut coast_suffix = None;
         let coast_names = [" (nc)", " (sc)", " (ec)", " (wc)"];
 
@@ -730,6 +855,12 @@ impl Parser {
                             name: format!("{} {}", name, coast_name),
                             adjacent_seas,
                             province: province.to_reference(),
+                            coords: Coords { 
+                                all_locs: Vec::new(), 
+                                all_rets: Vec::new(),
+                                primary_unit_coordinate: None, 
+                                retreat_unit_coordinate: None
+                            }
                         };
                         coasts.push(coast);
                     }
@@ -817,52 +948,3 @@ impl Parser {
         }
     }
 }
-
-
-//     def _set_phantom_unit_coordinates(self) -> None:
-//         army_layer_to_key = [
-//             (self.phantom_primary_armies_layer, "primary_unit_coordinate"),
-//             (self.phantom_retreat_armies_layer, "retreat_unit_coordinate"),
-//         ]
-//         for layer, province_key in army_layer_to_key:
-//             layer_translation = get_transform(layer)
-//             for unit_data in layer.getchildren():
-//                 unit_translation = get_transform(unit_data)
-//                 province = self._get_province(unit_data)
-//                 coordinate = get_unit_coordinates(unit_data)
-//                 setattr(province, province_key, layer_translation.transform(unit_translation.transform(coordinate)))
-
-//         fleet_layer_to_key = [
-//             (self.phantom_primary_fleets_layer, "primary_unit_coordinate"),
-//             (self.phantom_retreat_fleets_layer, "retreat_unit_coordinate"),
-//         ]
-//         for layer, province_key in fleet_layer_to_key:
-
-//             layer_translation = get_transform(layer)
-//             for unit_data in layer.getchildren():
-//                 unit_translation = get_transform(unit_data)
-//                 # This could either be a sea province or a land coast
-//                 province_name = self._get_province_name(unit_data)
-//                 # this is me writing bad code to get this out faster, will fix later when we clean up this file
-//                 province, coast = self._get_province_and_coast(province_name)
-//                 is_coastal = False
-//                 for adjacent in province.adjacent:
-//                     if adjacent.type != ProvinceType.LAND:
-//                         is_coastal = True
-//                         break
-//                 if not coast and province.type != ProvinceType.SEA and is_coastal:
-//                     # bad bandaid: this is probably an extra phantom unit, or maybe it's a primary one?
-//                     try:
-//                         coast = province.coast()
-//                     except Exception:
-//                         print(
-//                             f"Warning: phantom unit skipped, if drawing some move doesn't work this might be why: {province_name} {province_key}"
-//                         )
-//                         continue
-
-//                 coordinate = get_unit_coordinates(unit_data)
-//                 translated_coordinate = unit_translation.transform(layer_translation.transform(coordinate))
-//                 if coast:
-//                     setattr(coast, province_key, translated_coordinate)
-//                 else:
-//                     setattr(province, province_key, translated_coordinate)

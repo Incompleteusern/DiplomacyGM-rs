@@ -49,6 +49,7 @@ pub enum ProvinceType {
     SEA
 }
 
+#[derive(Clone, Debug)]
 pub struct Coords {
     pub all_locs: Vec<Coord<f64>>,
     pub all_rets: Vec<Coord<f64>>,
@@ -76,6 +77,23 @@ impl ProvinceInfo {
         ProvinceReference::Name(self.name.clone())
     }
 
+    pub fn resolve_reference(&mut self, coast: CoastReference) -> &mut Coast {
+        match coast {
+            CoastReference::Name(name) => {
+                for potential in self.coasts.as_mut().unwrap() {
+                    if potential.name == name {
+                        return potential;
+                    }
+                }
+
+                panic!("Unknown Coast Name for Reference {}", name)
+            }
+            CoastReference::Index(i) => {
+                self.coasts.as_mut().and_then(|f| f.get_mut(i)).unwrap()
+            }
+        }
+    }
+
     pub fn set_coasts<'a, F>(&'a mut self, resolve: F) where 
         F: Fn(&ProvinceReference) -> &'a Mutex<ProvinceInfo>
      {
@@ -98,7 +116,19 @@ impl ProvinceInfo {
         }
 
         let name = format!("{} coast", self.name);
-        self.coasts = Some(vec![Coast { name, adjacent_seas: sea_provinces, province: self.to_reference() }])        
+        self.coasts = Some(vec![
+            Coast { 
+                name, 
+                adjacent_seas: sea_provinces, 
+                province: self.to_reference(),
+                coords: Coords { 
+                    all_locs: Vec::new(), 
+                    all_rets: Vec::new(),
+                    primary_unit_coordinate: None, 
+                    retreat_unit_coordinate: None
+                }
+            }
+        ])        
 
 
 //         if self.type == ProvinceType.SEA:
@@ -134,6 +164,7 @@ impl Debug for ProvinceInfo {
             .field("initial_owner", &self.initial_owner)
             .field("local_unit", &self.initial_unit)
             .field("coasts", &self.coasts)
+            .field("coords", &self.coords)
             .finish()
     }
 }
@@ -238,7 +269,8 @@ pub struct Coast {
 //         primary_unit_coordinate: tuple[float, float],
 //         retreat_unit_coordinate: tuple[float, float],
     pub adjacent_seas: Vec<ProvinceReference>,
-    pub province:  ProvinceReference
+    pub province:  ProvinceReference,
+    pub coords: Coords
 }
 
 impl Coast {
