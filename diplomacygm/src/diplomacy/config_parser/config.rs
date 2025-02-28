@@ -40,9 +40,7 @@ impl LayerInfo {
         let sea_layer: String = get_json_string(layers, "sea_borders").to_string();
         let names_layer: String = get_json_string(layers, "province_names").to_string();
         let centers_layer = get_json_string(layers, "supply_center_icons").to_string();
-        let units_layer = {
-            layers.get("starting_units").map(|value| value.as_str().unwrap().to_string())
-        };
+        let units_layer = layers.get("starting_units").map(|value| value.as_str().unwrap().to_string());
         let phantom_primary_armies_layer = get_json_string(layers, "army").to_string();
         let phantom_retreat_armies_layer = get_json_string(layers, "retreat_army").to_string();
         let phantom_primary_fleets_layer = get_json_string(layers, "fleet").to_string();

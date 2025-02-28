@@ -413,6 +413,8 @@ async fn create_game(
     let manager = &ctx.data().manager;
     let guild_id = ctx.guild_id().unwrap();
 
+    ctx.defer().await?;
+
     let game_message = manager.create_game(&guild_id, gametype).await;
 
     ctx.reply(game_message).await?;

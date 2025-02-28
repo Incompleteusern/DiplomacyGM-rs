@@ -13,7 +13,7 @@ pub struct BoardInfo {
 }
 
 pub struct Board {
-    info: BoardInfo,
+    info: Arc<BoardInfo>,
     players: Vec<Player>,
     // both maps store lowercase
     name_to_province: HashMap<String, Province>,
@@ -29,7 +29,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new(info: BoardInfo, phase: Phase) -> Board {
+    pub fn new(info: Arc<BoardInfo>, phase: Phase) -> Board {
         let mut name_to_province = HashMap::new();
         let mut name_to_coast = HashMap::new();
 

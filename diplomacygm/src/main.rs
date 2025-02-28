@@ -13,10 +13,10 @@ async fn main() {
 
     // TODO thread communicated just for emojis?
 
-    Parser::new("impdip1.1.json".to_string()).parse();
+    // Parser::new("impdip1.1.json".to_string()).parse();
 
     // Login with a bot token from the environment
-    // let token: String = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let token: String = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    // run_bot(token).await;
+    run_bot(token).await;
 }

@@ -1,16 +1,17 @@
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 
 use serenity::all::GuildId;
 use tokio::task;
 
 use crate::diplomacy::{map_parser::vector::vector::Parser};
 
-use super::{board::Board, phase::Phase};
+use super::{board::{Board, BoardInfo}, phase::Phase};
 
 //  Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database.
 pub struct Manager {
     // database: ,
-    _boards: RwLock<HashMap<GuildId, RwLock<Board>>>,
+    boards: RwLock<HashMap<GuildId, RwLock<Board>>>,
+    board_infos: RwLock<HashMap<String, Arc<BoardInfo>>>
 }
 
 impl Manager {
@@ -20,30 +21,31 @@ impl Manager {
         //         # TODO: have multiple for each variant?
         //         # do it like this so that the parser can cache data between board initilizations
         Manager {
-            _boards: RwLock::new(HashMap::new()),
+            boards: RwLock::new(HashMap::new()),
+            board_infos: RwLock::new(HashMap::new())
         }
     }
 
     pub fn list_servers(&self) -> Vec<GuildId> {
-        let boards = self._boards.read().unwrap();
+        let boards = self.boards.read().unwrap();
 
         boards.keys().copied().collect::<Vec<GuildId>>()
     }
 
     pub async fn create_game(&self, server_id: &GuildId, gametype: String) -> String {
         {
-            let boards = self._boards.read().unwrap();
+            let boards = self.boards.read().unwrap();
             if boards.contains_key(server_id) {
-                panic!("todo actually do anyhow")
-    //             raise RuntimeError("A game already exists in this server.")
+                return String::from("A game already exists in this server.");
             }
         }
 
+
         // TODO logger.info(f"Creating new game in server {server_id}")s
 
-        let info = task::spawn_blocking(|| Parser::new(gametype).parse()).await.unwrap();
+        let info = self.get_board_info(gametype).await;
 
-        let mut boards = self._boards.write().unwrap();
+        let mut boards = self.boards.write().unwrap();
         let mut new_board = Board::new(info, Phase::initial());
 
         new_board.board_id = Some(*server_id);
@@ -59,8 +61,20 @@ impl Manager {
 
     }
 
+    pub async fn get_board_info(&self, gametype: String) -> Arc<BoardInfo> {
+        if let Some(info) = self.board_infos.read().unwrap().get(&gametype) {
+            return info.clone();
+        }
+
+        let info = task::spawn_blocking(move || Parser::new(gametype.clone()).parse()).await.unwrap();
+        let info = Arc::new(info);
+        let mut board_infos = self.board_infos.write().unwrap();
+        board_infos.insert(info.datafile.clone(), info.clone()); 
+        info
+    }
+
     pub fn change_fish(&self, server_id: GuildId, amount: i64) -> i64 {
-        let boards = self._boards.read().unwrap();
+        let boards = self.boards.read().unwrap();
         let mut board = boards.get(&server_id).unwrap_or_else(|| todo!()).write().unwrap();
         board.fish += amount;
 
@@ -68,7 +82,7 @@ impl Manager {
     }
 
     pub fn province_info(&self, server_id: GuildId, name: String) -> String {
-        let boards = self._boards.read().unwrap();
+        let boards = self.boards.read().unwrap();
         let board = boards.get(&server_id).unwrap_or_else(|| todo!()).read().unwrap();
         let (province, coast) = board.get_province_and_coast(name.clone());
         // println!("{:?}", province);
