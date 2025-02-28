@@ -16,3 +16,7 @@ pub mod map_parser {
         pub mod transform;
     }
 }
+
+pub mod config_parser {
+    pub mod config;
+}

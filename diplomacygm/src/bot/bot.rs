@@ -27,7 +27,7 @@ use rand::seq::{IndexedRandom, SliceRandom};
 use serenity::{all::{CreateMessage, GatewayIntents, Mention, ReactionType}, Client};
 use tracing::info;
 
-use crate::{bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils::reply_if_slash}, diplomacy::persistence::manager::{self, Manager}};
+use crate::{bot::{config::{add_temporary_bumble, remove_temporary_bumble}, utils::reply_if_slash}, diplomacy::persistence::manager::Manager};
 
 use super::{config::is_bumble, utils::{react, unreact}};
 

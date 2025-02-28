@@ -1,8 +1,8 @@
 
 
-pub const NAMESPACE_INKSCAPE: &str = "{http://www.inkscape.org/namespaces/inkscape}";
-pub const NAMESPACE_SODIPODI: &str = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd";
-pub const NAMESPACE_SVG: &str = "http://www.w3.org/2000/svg";
+// pub const NAMESPACE_INKSCAPE: &str = "{http://www.inkscape.org/namespaces/inkscape}";
+// pub const NAMESPACE_SODIPODI: &str = "http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd";
+// pub const NAMESPACE_SVG: &str = "http://www.w3.org/2000/svg";
 
 pub const INKSPACE_LABEL: &str = "inkscape:label";
 pub const SODIPODI_SIDES: &str = "sodipodi:sides";

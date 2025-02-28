@@ -1,5 +1,5 @@
 
-use std::{borrow::Cow, cell::RefCell, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::{Arc, Mutex}};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, env, fs::{self, File}, io::{BufRead, BufReader, BufWriter, Write}, path::PathBuf, sync::Arc};
 
 use geo_types::Coord;
 use geos::{Geom, Geometry};
@@ -7,7 +7,7 @@ use quick_xml::{events::{BytesStart, Event}, Reader};
 
 use serde_json::Value;
 
-use crate::diplomacy::{map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{player::PlayerInfo, province::{Coast, CoastReference, Coords, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{self, Unit, UnitType}}};
+use crate::diplomacy::{config_parser::config::LayerInfo, map_parser::vector::{transform::Transform, utils::{get_id, get_json_string, SODIPODI_SIDES}}, persistence::{board::BoardInfo, player::PlayerInfo, province::{Coast, CoastReference, Coords, ProvinceInfo, ProvinceReference, ProvinceType}, unit::{Unit, UnitType}}};
 
 use super::utils::{get_attribute, get_inkspace_label, get_player, get_unit_coordinates, parse_path};
 
@@ -27,29 +27,6 @@ enum Layer {
     PhantomRetreatArmiesLayer,
     PhantomPrimaryFleetsLayer,
     PhantomRetreatFleetsLayer
-}
-
-pub struct LayerInfo {
-    land_layer: String,
-    island_layer: String,
-    island_fill_layer: String,
-    sea_layer: String,
-    names_layer: String,
-    centers_layer: String,
-    units_layer: Option<String>,
-    phantom_primary_armies_layer: String, 
-    phantom_retreat_armies_layer: String, 
-    phantom_primary_fleets_layer: String, 
-    phantom_retreat_fleets_layer: String, 
-    province_labels: bool,
-    unit_labels: bool,
-    center_labels: bool,
-    unit_type_labeled: bool,
-    neutral: String,
-    neutral_sc: String,
-    border_margin_hint: f64,
-    loc_x_offset: f64,
-    loc_y_offset: f64,
 }
 
 impl LayerInfo {
@@ -83,6 +60,7 @@ impl LayerInfo {
 }
 
 pub struct Parser {
+    name: String,
     players: Vec<Arc<PlayerInfo>>,
     datafile: String,
     svg_path: PathBuf,
@@ -102,41 +80,13 @@ impl Parser {
 
         let data = fs::read_to_string(data_path).expect("Failed to read file.");
         let json: Value = serde_json::from_str(&data).expect("JSON was not well-formatted");
-
-        let layers = json.get("svg config").expect("Expected \'svg config\' in json");
+        let name = json.get("name").unwrap().as_str().unwrap().to_string();
         let overrides = json.get("overrides").cloned();
 
+        let layers: &Value = json.get("svg config").expect("Expected \'svg config\' in json");
+        let layer_info = LayerInfo::new(layers);
+
         let svg_path = current_dir.clone().join(get_json_string(&json, "file"));
-
-        let province_labels = layers.get("province_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let center_labels = layers.get("center_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let unit_labels = layers.get("unit_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let unit_type_labeled = layers.get("unit_type_labeled").map(|f| f.as_bool()).flatten().unwrap_or(false);
-
-        let land_layer = get_json_string(layers, "land_layer").to_string();
-        let island_layer = get_json_string(layers, "island_borders").to_string();
-        let island_fill_layer = get_json_string(layers, "island_fill_layer").to_string();
-        let sea_layer: String = get_json_string(layers, "sea_borders").to_string();
-        let names_layer: String = get_json_string(layers, "province_names").to_string();
-        let centers_layer = get_json_string(layers, "supply_center_icons").to_string();
-        let units_layer = {
-            if let Some(value) = layers.get("starting_units") {
-                Some(value.as_str().unwrap().to_string())
-            } else { 
-                None
-            }
-        };
-        let phantom_primary_armies_layer = get_json_string(layers, "army").to_string();
-        let phantom_retreat_armies_layer = get_json_string(layers, "retreat_army").to_string();
-        let phantom_primary_fleets_layer = get_json_string(layers, "fleet").to_string();
-        let phantom_retreat_fleets_layer = get_json_string(layers, "retreat_fleet").to_string();
-
-        let loc_x_offset = layers.get("loc_x_offset").and_then(|f| f.as_f64()).unwrap_or(0.0);
-        let loc_y_offset = layers.get("loc_y_offset").and_then(|f| f.as_f64()).unwrap_or(0.0);
-     
-        let neutral = get_json_string(layers, "neutral").to_string();
-        let neutral_sc = get_json_string(layers, "neutral_sc").to_string();
-        let border_margin_hint = layers.get("border_margin_hint").unwrap().as_f64().unwrap();
 
         let mut players: Vec<Arc<PlayerInfo>> = Vec::new();
         let mut color_to_player: HashMap<String, Option<Arc<PlayerInfo>>> = HashMap::new();
@@ -152,44 +102,23 @@ impl Parser {
             color_to_player.insert(color.to_string(), Some(player));
         }
 
-        color_to_player.insert(neutral.clone(), None);
-        color_to_player.insert(neutral_sc.clone(), None);
+        color_to_player.insert(layer_info.neutral.clone(), None);
+        color_to_player.insert(layer_info.neutral_sc.clone(), None);
 
         Parser {
+            name,
             players,
             datafile,
             svg_path,
             color_to_player,
             name_to_province: HashMap::new(),
-            layer_info: LayerInfo {
-                land_layer,
-                island_layer,
-                island_fill_layer,
-                sea_layer,
-                names_layer,
-                centers_layer,
-                units_layer,
-                phantom_primary_armies_layer,
-                phantom_retreat_armies_layer,
-                phantom_primary_fleets_layer,
-                phantom_retreat_fleets_layer,
-
-                unit_type_labeled,
-                province_labels,
-                center_labels,
-                unit_labels,
-                neutral,
-                neutral_sc,
-                border_margin_hint,
-                loc_x_offset,
-                loc_y_offset
-            },
+            layer_info,
             overrides
         }
 
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(mut self) -> BoardInfo {
         let svg_str = fs::read_to_string(&self.svg_path).expect("Failed to read file.");
         let mut reader = Reader::from_str(svg_str.as_str());
 
@@ -211,7 +140,7 @@ impl Parser {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
                     if depth == 1 {
-                        println!("{:?}", get_id(&e));
+                        // println!("{:?}", get_id(&e));
                         layer = self.layer_info.match_id(get_id(&e));
 
                         match layer {
@@ -326,36 +255,16 @@ impl Parser {
             }
         }
 
-        //         for province in provinces:
-        //             province.all_locs -= {None}
-        //             province.all_rets -= {None}
-        //             if province.primary_unit_coordinate == None:
-        //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
-        //                 province.primary_unit_coordinate = (0, 0)
-        //             if province.retreat_unit_coordinate == None:
-        //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
-        //                 province.retreat_unit_coordinate = (0, 0)
+        let name_to_info = self.name_to_province.into_iter().map(|(k, v)| {
+            (k, Arc::new(v.into_inner()))
+        }).collect();
 
-        //         for province in provinces:
-        //             for coast in province.coasts:
-        //                 coast.all_locs -= {None}
-        //                 coast.all_rets -= {None}
-        //                 if coast.primary_unit_coordinate == None:
-        //                     logger.warning(f"Province {coast.name} has no unit coord. Setting to 0,0 ...")
-        //                     coast.primary_unit_coordinate = (0, 0)
-        //                 if coast.retreat_unit_coordinate == None:
-        //                     logger.warning(f"Province {coast.name} has no retreat coord. Setting to 0,0 ...")
-        //                     coast.retreat_unit_coordinate = (0, 0)
-
-
-        //         return Board(players, provinces, units, phase.initial(), self.data, self.datafile)
-
-        // todo create provinces array index and reference using index
-
-        // for province in self.name_to_province.values() {
-        //     println!("{:?}", province);
-        // }
-
+        BoardInfo {
+            name: self.name,
+            players: self.players,
+            name_to_info,
+            datafile: self.datafile
+        }
     }
 
     pub fn parse_province_layer(&mut self, province_type: ProvinceType, reader: &mut Reader<&[u8]>, raw_provinces: &mut Option<Vec<ProvinceInfo>>, e: BytesStart) {
@@ -714,17 +623,6 @@ impl Parser {
         for province in self.name_to_province.values() {
             province.borrow_mut().set_coasts(|p| self.resolve_reference(p))
         }
-//         # set phantom unit coordinates for optimal unit placements
-//         self._set_phantom_unit_coordinates()
-
-//         for province in provinces:
-//             province.all_locs.add(province.primary_unit_coordinate)
-//             province.all_rets.add(province.retreat_unit_coordinate)
-//             for coast in province.coasts:
-//                 coast.all_locs.add(coast.primary_unit_coordinate)
-//                 coast.all_rets.add(coast.retreat_unit_coordinate)
-
-//         return provinces
     }
 
     fn resolve_reference(&self, p: &ProvinceReference) -> &RefCell<ProvinceInfo> {
@@ -743,9 +641,6 @@ impl Parser {
 
         let overrides = self.overrides.take().unwrap();
         
-        println!("fooy");
-        // println!("{:?}", overrides);
-
         if let Some(high_provinces) = overrides.get("high provinces").and_then(|f| f.as_object()) {
             for (name, data) in high_provinces {
                 let num: i64 = data.get("num").unwrap().as_i64().unwrap();
@@ -962,4 +857,5 @@ impl Parser {
             }
         }
     }
+
 }

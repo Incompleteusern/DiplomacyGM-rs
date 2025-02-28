@@ -1,5 +1,5 @@
 
-use std::{cell::RefCell, fmt::Debug, ops::DerefMut, sync::{Arc, Mutex}};
+use std::{cell::RefCell, fmt::Debug, sync::Arc};
 
 use geo_types::Coord;
 use geos::Geometry;
@@ -8,7 +8,7 @@ use super::{player::{Player, PlayerInfo}, unit::Unit};
 
 
 impl PartialEq for Location {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         todo!()
     }
 }
@@ -28,14 +28,13 @@ impl Location {
     }
 }
 
-// name is used while parsing, index is used when done
+// index version isn't currently used but kept for now
 #[derive(Debug, Clone)]
 pub enum CoastReference {
     Name(String),
     Index(usize)
 }
 
-// name is used while parsing, index is used when done
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProvinceReference {
     Name(String),
@@ -154,13 +153,13 @@ impl Debug for ProvinceInfo {
 }
 
 pub struct Province {
-    pub info: ProvinceInfo,
-    corer: Option<Arc<PlayerInfo>>,
-    core: Option<Arc<PlayerInfo>>,
-    half_core: Option<Arc<PlayerInfo>>,
-    owner: Option<Arc<PlayerInfo>>,
-    unit: Option<Unit>,
-    dislodged_unit: Option<Unit>
+    pub info: Arc<ProvinceInfo>,
+    pub corer: Option<Arc<PlayerInfo>>,
+    pub core: Option<Arc<PlayerInfo>>,
+    pub half_core: Option<Arc<PlayerInfo>>,
+    pub owner: Option<Arc<PlayerInfo>>,
+    pub unit: Option<Unit>,
+    pub dislodged_unit: Option<Unit>
 }
 // class Province(Location):
 //     def __init__(

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::{Mutex, RwLock}};
 use serenity::all::GuildId;
 use tokio::task;
 
-use crate::diplomacy::map_parser::vector::vector::Parser;
+use crate::diplomacy::{map_parser::vector::vector::Parser};
 
 use super::{board::Board, phase::Phase};
 
@@ -41,16 +41,10 @@ impl Manager {
 
         // TODO logger.info(f"Creating new game in server {server_id}")s
 
-        let result = task::spawn_blocking(|| Parser::new(gametype)).await.unwrap();
+        let info = task::spawn_blocking(|| Parser::new(gametype).parse()).await.unwrap();
 
         let mut boards = self._boards.write().unwrap();
-        let mut new_board = Board::new(
-            Vec::new(),
-            Vec::new(),
-            // HashSet::new(),
-            Phase::SpringMoves, 
-            String::from("none")            
-        );
+        let mut new_board = Board::new(info, Phase::initial());
 
         new_board.board_id = Some(server_id.clone());
 //         self._database.save_board(server_id, self._boards[server_id])

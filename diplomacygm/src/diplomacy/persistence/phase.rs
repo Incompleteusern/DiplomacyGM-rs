@@ -22,7 +22,7 @@ impl Phase {
         }
     }
 
-    fn initial() -> Phase {
+    pub fn initial() -> Phase {
         Self::SpringMoves
     }
 

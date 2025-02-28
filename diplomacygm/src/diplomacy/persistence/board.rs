@@ -7,13 +7,24 @@
 
 // logger = logging.getLogger(__name__)
 
+use std::{collections::HashMap, sync::Arc};
+
 use serenity::all::GuildId;
 
-use super::{phase::Phase, player::Player, province::Province};
+use super::{phase::Phase, player::{Player, PlayerInfo}, province::{Province, ProvinceInfo}};
+
+pub struct BoardInfo {
+    pub name: String,
+    pub players: Vec<Arc<PlayerInfo>>,
+    pub name_to_info: HashMap<String, Arc<ProvinceInfo>>,
+    pub datafile: String
+}
+
 
 pub struct Board {
+    info: BoardInfo,
     players: Vec<Player>,
-    provinces: Vec<Province>,
+    info_to_province: HashMap<String, Province>,
     // units: HashSet<RefCell<Unit>>,
     phase: Phase,
     year: i64,
@@ -22,44 +33,42 @@ pub struct Board {
     pub fish: i64,
     orders_enabled: bool,
     // data: todo!(),
-    datafile: String
 }
 
 impl Board {
-    pub fn new(players: Vec<Player>,
-        provinces: Vec<Province>,
-        // units: HashSet<RefCell<Unit>>,
-        phase: Phase,
-        // data: todo!(),
-        datafile: String) -> Board {
+    pub fn new(info: BoardInfo, phase: Phase) -> Board {
+        let mut info_to_province = HashMap::new();
+
+        for info in info.name_to_info.values() {
+            let province = Province {
+                info: Arc::clone(info),
+                corer: None,
+                core: info.initial_core.clone(),
+                half_core: None,
+                owner: info.initial_owner.clone(),
+                unit: info.initial_unit.clone(),
+                dislodged_unit: None,
+            };
+            info_to_province.insert(info.name.clone(), province);
+        }
+
+        let players = info.players.iter().map(|info| {
+            Player::new(Arc::clone(info), Vec::new())
+        }).collect();
+
+        // TODO init player center count
+        
         Board {
+            info,
             players,
-            provinces,
-            // units,
+            info_to_province,
             phase,
             year: 0,
             board_id: None,
             fish: 0,
             orders_enabled: true,
-            datafile: datafile
         }
     }
-
-
-// class Board:
-//     def __init__(
-//         self, players: set[Player], provinces: set[Province], units: set[Unit], phase: Phase, data, datafile: str
-//     ):
-//         self.players: set[Player] = players
-//         self.provinces: set[Province] = provinces
-//         self.units: set[Unit] = units
-//         self.phase: Phase = phase
-//         self.year = 0
-//         self.board_id = 0
-//         self.fish = 0
-//         self.orders_enabled: bool = True
-//         self.data = data
-//         self.datafile = datafile
 
     // TODO: we could have this as a dict ready on the variant
     fn get_player(&self, name: &str) -> Option<&Player> {
@@ -83,7 +92,7 @@ impl Board {
     fn get_province(&self, name: &str) -> Option<&Province> {
         // we ignore capitalization because this is primarily used for user input
 
-        for province in self.provinces.iter() {
+        for province in self.info_to_province.values() {
             if province.info.name.to_lowercase() == name.to_lowercase() {
                 return Some(province)
             }

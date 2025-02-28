@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use super::{order::PlayerOrder, province::ProvinceInfo,};
 
@@ -12,8 +12,8 @@ pub struct PlayerInfo {
 
 pub struct Player {
     pub info: Arc<PlayerInfo>,
-    centers: HashSet<Arc<ProvinceInfo>>,
-    build_orders: HashSet<PlayerOrder>
+    pub centers: Vec<Arc<ProvinceInfo>>,
+    pub build_orders: Vec<PlayerOrder>
 }
 
 impl PlayerInfo {
@@ -23,9 +23,9 @@ impl PlayerInfo {
 }
 
 impl Player {
-    pub fn new(info: Arc<PlayerInfo>, iscc: i64, centers: HashSet<Arc<ProvinceInfo>>) -> Player {
+    pub fn new(info: Arc<PlayerInfo>, centers: Vec<Arc<ProvinceInfo>>) -> Player {
         Player {
-            info, centers, build_orders: HashSet::new()
+            info, centers, build_orders: Vec::new()
         }
     }
 }
