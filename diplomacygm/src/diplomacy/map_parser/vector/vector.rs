@@ -511,13 +511,13 @@ impl Parser {
                         
                         if retreat {
                             if let Some(coast) = coast {
-                                province.resolve_reference(coast).coords.primary_unit_coordinate = coord;
+                                province.resolve_reference_mut(&coast).coords.primary_unit_coordinate = coord;
                             } else {
                                 province.coords.primary_unit_coordinate = coord;
                             }
                         } else {
                             if let Some(coast) = coast {
-                                province.resolve_reference(coast).coords.retreat_unit_coordinate = coord;
+                                province.resolve_reference_mut(&coast).coords.retreat_unit_coordinate = coord;
                             } else {
                                 province.coords.retreat_unit_coordinate = coord;
                             }

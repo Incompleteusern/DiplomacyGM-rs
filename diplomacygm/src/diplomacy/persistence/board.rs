@@ -1,18 +1,10 @@
-// import logging
-
-// from diplomacy.persistence.phase import Phase
-// from diplomacy.persistence.player import Player
-// from diplomacy.persistence.province import Province, Coast, Location
-// from diplomacy.persistence.unit import Unit, UnitType
-
-// logger = logging.getLogger(__name__)
-
 use std::{collections::HashMap, sync::Arc};
 
 use serenity::all::GuildId;
 
-use super::{phase::Phase, player::{Player, PlayerInfo}, province::{Province, ProvinceInfo}};
+use super::{phase::Phase, player::{Player, PlayerInfo}, province::{Coast, CoastReference, Location, Province, ProvinceInfo, ProvinceReference}};
 
+// TODO convert ProvinceReference to use index?
 pub struct BoardInfo {
     pub name: String,
     pub players: Vec<Arc<PlayerInfo>>,
@@ -20,11 +12,12 @@ pub struct BoardInfo {
     pub datafile: String
 }
 
-
 pub struct Board {
     info: BoardInfo,
     players: Vec<Player>,
-    info_to_province: HashMap<String, Province>,
+    // both maps store lowercase
+    name_to_province: HashMap<String, Province>,
+    name_to_coast: HashMap<String, (ProvinceReference, CoastReference)>,
     // units: HashSet<RefCell<Unit>>,
     phase: Phase,
     year: i64,
@@ -37,7 +30,8 @@ pub struct Board {
 
 impl Board {
     pub fn new(info: BoardInfo, phase: Phase) -> Board {
-        let mut info_to_province = HashMap::new();
+        let mut name_to_province = HashMap::new();
+        let mut name_to_coast = HashMap::new();
 
         for info in info.name_to_info.values() {
             let province = Province {
@@ -49,7 +43,13 @@ impl Board {
                 unit: info.initial_unit.clone(),
                 dislodged_unit: None,
             };
-            info_to_province.insert(info.name.clone(), province);
+            name_to_province.insert(info.name.clone().to_ascii_lowercase(), province);
+
+            if let Some(coasts) = &info.coasts {
+                for coast in coasts {
+                    name_to_coast.insert(coast.name.clone().to_ascii_lowercase(), (info.to_reference(), coast.to_reference()));
+                }
+            }
         }
 
         let players = info.players.iter().map(|info| {
@@ -61,7 +61,8 @@ impl Board {
         Board {
             info,
             players,
-            info_to_province,
+            name_to_province,
+            name_to_coast,
             phase,
             year: 0,
             board_id: None,
@@ -70,53 +71,59 @@ impl Board {
         }
     }
 
-    // TODO: we could have this as a dict ready on the variant
-    fn get_player(&self, name: &str) -> Option<&Player> {
-        // we ignore capitalization because this is primarily used for user input
+    // // TODO: we could have this as a dict ready on the variant
+    // fn get_player(&self, name: &str) -> Option<&Player> {
+    //     // we ignore capitalization because this is primarily used for user input
 
-        for player in self.players.iter() {
-            if player.info.name.to_lowercase() == name.to_lowercase() {
-                return Some(player)
-            }
-        }
+    //     for player in self.players.iter() {
+    //         if player.info.name.to_lowercase() == name.to_lowercase() {
+    //             return Some(player)
+    //         }
+    //     }
 
-        None
-    }
+    //     None
+    // }
 
     fn get_players_by_score(&self) -> Vec<Player> {
         todo!()
     }
 
 
-    // TODO: we could have this as a dict ready on the variant
-    fn get_province(&self, name: &str) -> Option<&Province> {
-        // we ignore capitalization because this is primarily used for user input
+    // // TODO: we could have this as a dict ready on the variant
+    // fn get_province(&self, name: &str) -> Option<&Province> {
+    //     // we ignore capitalization because this is primarily used for user input
 
-        for province in self.info_to_province.values() {
-            if province.info.name.to_lowercase() == name.to_lowercase() {
-                return Some(province)
-            }
+    //     for province in self.name_to_province.values() {
+    //         if province.info.name.to_lowercase() == name.to_lowercase() {
+    //             return Some(province)
+    //         }
+    //     }
+
+    //     None
+    // }
+
+    pub fn resolve_province_ref(&self, reference: &ProvinceReference) -> &Province {
+        match reference {
+            ProvinceReference::Name(name) => self.name_to_province.get(&name.to_ascii_lowercase()).unwrap(),
+            ProvinceReference::Index(_) => panic!("not possible rn"),
         }
-
-        None
     }
 
-//     def get_province_and_coast(self, name: str) -> tuple[Province, Coast | None]:
-//         # TODO: (BETA) we build this everywhere, let's just have one live on the Board on init
-//         # we ignore capitalization because this is primarily used for user input
-//         name = name.lower()
-//         name_to_province: dict[str, Province] = {}
-//         name_to_coast: dict[str, Coast] = {}
-//         for province in self.provinces:
-//             name_to_province[province.name.lower()] = province
-//             for coast in province.coasts:
-//                 name_to_coast[coast.name.lower()] = coast
+    pub fn get_province_and_coast(&self, name: String) -> (Option<&Province>, Option<&Coast>) {
+        let name = name.to_ascii_lowercase();
 
-//         coast = name_to_coast.get(name)
-//         if coast:
-//             return coast.province, coast
-//         else:
-//             return name_to_province[name], None
+        if self.name_to_coast.contains_key(&name) {
+            let (province, coast) = self.name_to_coast.get(&name).unwrap();
+            let province = self.resolve_province_ref(province);
+            let coast = province.info.resolve_reference(coast);
+            (Some(province), Some(coast))
+        } else if self.name_to_province.contains_key(&name) {
+            let province = self.name_to_province.get(&name).unwrap();
+            (Some(province), None)
+        } else {
+            (None, None)
+        }
+    }
 
 //     def get_location(self, name: str) -> Location:
 //         province, coast = self.get_province_and_coast(name)

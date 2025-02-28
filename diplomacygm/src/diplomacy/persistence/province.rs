@@ -14,8 +14,8 @@ impl PartialEq for Location {
 }
 
 pub enum Location {
-    COAST,
-    PROVINCE(Province)
+    Coast(CoastReference),
+    Province(ProvinceReference)
 }
 
 impl Location {
@@ -48,6 +48,17 @@ pub enum ProvinceType {
     SEA
 }
 
+// todo implementing display is better
+impl ProvinceType {
+    pub fn name(&self) -> &str {
+        match self {
+            ProvinceType::LAND => "LAND",
+            ProvinceType::ISLAND => "ISLAND",
+            ProvinceType::SEA => "SEA",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Coords {
     pub all_locs: Vec<Coord<f64>>,
@@ -56,7 +67,6 @@ pub struct Coords {
     pub retreat_unit_coordinate: Option<Coord<f64>>,
 }
 
-// TODO make sure when dropping that all adjacencies are cleared
 pub struct ProvinceInfo {
     pub name: String,
     pub province_type: ProvinceType,
@@ -76,11 +86,11 @@ impl ProvinceInfo {
         ProvinceReference::Name(self.name.clone())
     }
 
-    pub fn resolve_reference(&mut self, coast: CoastReference) -> &mut Coast {
+    pub fn resolve_reference(&self, coast: &CoastReference) -> &Coast {
         match coast {
             CoastReference::Name(name) => {
-                for potential in self.coasts.as_mut().unwrap() {
-                    if potential.name == name {
+                for potential in self.coasts.as_ref().unwrap() {
+                    if &potential.name == name {
                         return potential;
                     }
                 }
@@ -88,7 +98,24 @@ impl ProvinceInfo {
                 panic!("Unknown Coast Name for Reference {}", name)
             }
             CoastReference::Index(i) => {
-                self.coasts.as_mut().and_then(|f| f.get_mut(i)).unwrap()
+                self.coasts.as_ref().and_then(|f| f.get(*i)).unwrap()
+            }
+        }
+    }
+
+    pub fn resolve_reference_mut(&mut self, coast: &CoastReference) -> &mut Coast {
+        match coast {
+            CoastReference::Name(name) => {
+                for potential in self.coasts.as_mut().unwrap() {
+                    if &potential.name == name {
+                        return potential;
+                    }
+                }
+
+                panic!("Unknown Coast Name for Reference {}", name)
+            }
+            CoastReference::Index(i) => {
+                self.coasts.as_mut().and_then(|f| f.get_mut(*i)).unwrap()
             }
         }
     }
@@ -152,6 +179,7 @@ impl Debug for ProvinceInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct Province {
     pub info: Arc<ProvinceInfo>,
     pub corer: Option<Arc<PlayerInfo>>,

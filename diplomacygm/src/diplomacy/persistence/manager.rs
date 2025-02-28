@@ -66,6 +66,46 @@ impl Manager {
 
         board.fish
     }
+
+    pub fn province_info(&self, server_id: GuildId, name: String) -> String {
+        let boards = self._boards.read().unwrap();
+        let board = boards.get(&server_id).unwrap_or_else(|| todo!()).lock().unwrap();
+        let (province, coast) = board.get_province_and_coast(name.clone());
+        // println!("{:?}", province);
+        // println!("{:?}", coast);
+
+        if let Some(coast) = coast {
+            let mut adjacent_seas: Vec<String> = coast.adjacent_seas.iter()
+                .map(|f| board.resolve_province_ref(f).info.name.clone()).collect();
+            
+            adjacent_seas.sort();
+
+            format!("Province: {}\nType: COAST\nAdjacent Provinces:\n- {}\n", 
+                province.unwrap().info.name,
+                adjacent_seas.join("\n- ")
+            )
+        } else if let Some(province) = province {
+            let mut adjacent_provinces: Vec<String> = province.info.adjacent.iter()
+            .map(|f| board.resolve_province_ref(f).info.name.clone()).collect();
+        
+            adjacent_provinces.sort();
+
+            format!("Province: {}\nType: {}\nCoasts: {}\nOwner: {}\nUnit: {}\nCenter: {}\nCore: {}\nHalf-Core: {}\nAdjacent Provinces:\n- {}\n",
+                province.info.name,
+                province.info.province_type.name(),
+                province.info.coasts.as_ref().map(|f| f.len()).unwrap_or(0),
+                province.owner.as_ref().map(|f| f.name.clone()).unwrap_or("None".to_string()),
+                province.unit.as_ref().map(|f| f.owner.name.clone()).unwrap_or("None".to_string()),
+                province.info.has_supply_center,
+                province.core.as_ref().map(|f| f.name.clone()).unwrap_or("None".to_string()),
+                province.half_core.as_ref().map(|f| f.name.clone()).unwrap_or("None".to_string()),
+                adjacent_provinces.join("\n- ")
+            )
+        } else {
+//         raise ValueError(f"Could not find province {province_name}")
+            format!("Could not find province {}", name)            
+        }
+    }
 }
 
 

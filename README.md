@@ -11,7 +11,7 @@ Goals
 - [ ] Add anyhow or some way to create proper errors
 - [ ] Figure out tracing and have proper logging
 - [x] Finish parsing code 
-- [ ] .provinceinfo
+- [x] .provinceinfo
 - [ ] Create order parsing
 - [ ] Create adjudication (find out whether I want to port the mess of tests, and if so how)
 - [ ] Create mapping code
