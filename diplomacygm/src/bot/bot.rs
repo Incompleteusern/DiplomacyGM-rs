@@ -415,7 +415,7 @@ async fn create_game(
 
     let game_message = manager.create_game(&guild_id, gametype).await;
 
-    ctx.say(game_message).await?;
+    ctx.reply(game_message).await?;
     Ok(())
 }
 

@@ -6,6 +6,7 @@
 // # TODO: Refactor all of this into one Transform (Empty and Translation can be trivally converted into Matrix)
 
 use core::panic;
+use std::sync::LazyLock;
 
 use geo_types::Coord;
 use quick_xml::events::BytesStart;
@@ -23,6 +24,9 @@ pub struct Transform {
     pub x_c: f64,
     pub y_c: f64
 }
+
+const TRANSLATE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*translate\(([^,]*),([^,]*)\)\s*$").unwrap());
+const MATRIX_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*matrix\(([^,]*),([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)\)\s*$").unwrap());
 
 impl Transform {
 
@@ -60,13 +64,11 @@ impl Transform {
             if s.len() == 0 {
                 Self::empty()
             } else if s.starts_with("translate") {
-                let re = Regex::new(r"^\s*translate\(([^,]*),([^,]*)\)\s*$").unwrap();
-                let m = re.captures(&s).expect("Translation not found");
+                let m = TRANSLATE_REGEX.captures(&s).expect("Translation not found");
 
                 Self::translate(get_float(&m, 1), get_float(&m, 2))
             } else if s.starts_with("matrix") {
-                let re = Regex::new(r"^\s*matrix\(([^,]*),([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)\)\s*$").unwrap();
-                let m = re.captures(&s).expect("Matrix transform not found");
+                let m = MATRIX_REGEX.captures(&s).expect("Matrix transform not found");
 
                 Self::matrix(get_float(&m, 1), get_float(&m, 4), get_float(&m, 3), get_float(&m, 2), get_float(&m, 5), get_float(&m, 6))
             } else {

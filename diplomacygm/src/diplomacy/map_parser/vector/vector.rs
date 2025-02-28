@@ -140,7 +140,7 @@ impl Parser {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
                     if depth == 1 {
-                        // println!("{:?}", get_id(&e));
+                        println!("{:?}", get_id(&e));
                         layer = self.layer_info.match_id(get_id(&e));
 
                         match layer {
@@ -445,6 +445,7 @@ impl Parser {
                 }
                 Ok(Event::End(_)) => {
                     if depth == 1 {
+                        // println!("{}", name);
                         let mut province = self.name_to_province.get(&name).unwrap().borrow_mut();
                         let coord = Some(layer_transform.transform(unit_translation.transform(coord)));
                         if retreat {
@@ -724,8 +725,8 @@ impl Parser {
         if let Some(provinces) = overrides.get("provinces").and_then(|f| f.as_object()) {
             for (name, data) in provinces {
                 let mut province = self.name_to_province.get(name).unwrap().borrow_mut();
-                println!("{:?}", name);
-                println!("{:?}", data);
+                // println!("{:?}", name);
+                // println!("{:?}", data);
 
                 if let Some(adjacencies) = data.get("adjacencies").and_then(|f| f.as_array()) {
                     let mut to_add: Vec<ProvinceReference> = adjacencies.iter()
