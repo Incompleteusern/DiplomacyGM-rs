@@ -7,10 +7,11 @@ For SVGs, goal is that `quick-xml` is used for parsing, then `quick-xml` is used
 
 Goals
 
-- [ ] Redesign persistence structs to cleanly filter out what is mutable game state and what is immutable 
+- [x] Redesign persistence structs to cleanly filter out what is mutable game state and what is immutable 
 - [ ] Add anyhow or some way to create proper errors
 - [ ] Figure out tracing and have proper logging
-- [ ] Finish parsing code 
+- [x] Finish parsing code 
+- [ ] .provinceinfo
 - [ ] Create order parsing
 - [ ] Create adjudication (find out whether I want to port the mess of tests, and if so how)
 - [ ] Create mapping code
