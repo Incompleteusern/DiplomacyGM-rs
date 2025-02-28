@@ -181,7 +181,7 @@ async fn botsay(ctx: Context<'_>, mention: Option<Mention>, #[rest] text: Option
 async fn bumble(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    let mut list_of_bumble = vec!["b", "u", "m", "b", "l", "e"];
+    let mut list_of_bumble = ["b", "u", "m", "b", "l", "e"];
     list_of_bumble.shuffle(&mut rand::rng());
     let mut word_of_bumble = list_of_bumble.join("");
 

@@ -226,12 +226,12 @@ impl Parser {
             let mut province = province.borrow_mut();
             let coords = &mut province.coords;
 
-            if coords.primary_unit_coordinate == None {
+            if coords.primary_unit_coordinate.is_none() {
                 println!("Province {} has no unit coord. Setting to 0,0 ...", name);
                 //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
                 coords.primary_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
             }
-            if coords.retreat_unit_coordinate == None {
+            if coords.retreat_unit_coordinate.is_none() {
                 println!("Province {} has no retreat coord. Setting to 0,0 ...", name);
                 //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
                 coords.retreat_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
@@ -241,12 +241,12 @@ impl Parser {
                 for coast in coasts {
                     let name = coast.name.clone();
                     let coords = &mut coast.coords;
-                    if coords.primary_unit_coordinate == None {
+                    if coords.primary_unit_coordinate.is_none() {
                         println!("Province {} has no unit coord. Setting to 0,0 ...", name);
                         //                 logger.warning(f"Province {province.name} has no unit coord. Setting to 0,0 ...")
                         coords.primary_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
                     }
-                    if coords.retreat_unit_coordinate == None {
+                    if coords.retreat_unit_coordinate.is_none() {
                         println!("Province {} has no retreat coord. Setting to 0,0 ...", name);
                         //                 logger.warning(f"Province {province.name} has no retreat coord. Setting to 0,0 ...")
                         coords.retreat_unit_coordinate = Some(Coord { x: 0.0, y: 0.0 });
@@ -336,7 +336,7 @@ impl Parser {
                     if depth == 1 {
                         let name = get_inkspace_label(&e).into_owned();
 
-                        let mut province = self.name_to_province.get_mut(&name).expect(format!("Unknown Province {}", name).as_str()).borrow_mut();
+                        let mut province = self.name_to_province.get_mut(&name).unwrap_or_else(|| panic!("Unknown Province {}", name)).borrow_mut();
 
                         if province.has_supply_center {
                             panic!("{} already has a supply center", name)
@@ -390,7 +390,7 @@ impl Parser {
                         let coast = if let Some(coast) = coast {
                             Some(coast)
                         } else {
-                            province.coasts.as_ref().map(|f| f.iter().next()).flatten()
+                            province.coasts.as_ref().and_then(|f| f.iter().next())
                                 .map(|f| f.to_reference())
                         };
 
@@ -516,12 +516,10 @@ impl Parser {
                             } else {
                                 province.coords.primary_unit_coordinate = coord;
                             }
+                        } else if let Some(coast) = coast {
+                            province.resolve_reference_mut(&coast).coords.retreat_unit_coordinate = coord;
                         } else {
-                            if let Some(coast) = coast {
-                                province.resolve_reference_mut(&coast).coords.retreat_unit_coordinate = coord;
-                            } else {
-                                province.coords.retreat_unit_coordinate = coord;
-                            }
+                            province.coords.retreat_unit_coordinate = coord;
                         }
                     }
 
@@ -566,7 +564,7 @@ impl Parser {
             }
         }
 
-        return (province, coast)
+        (province, coast)
     }
 
     pub fn process_provinces(&mut self, mut provinces: Vec<ProvinceInfo>) {
@@ -748,8 +746,7 @@ impl Parser {
                                 panic!("Unknown key {}", f)
                             }        
                         }).collect();
-                    province.adjacent = province.adjacent.iter().filter(|f| !to_remove.contains(f))
-                        .map(|f| f.clone()).collect();
+                    province.adjacent = province.adjacent.iter().filter(|f| !to_remove.contains(f)).cloned().collect();
                 }
                 if let Some(coasts_map) = data.get("coasts").and_then(|f| f.as_object()) {
                     let mut coasts = Vec::new();
@@ -784,7 +781,7 @@ impl Parser {
                         let x = a[0].as_f64().unwrap();
                         let y = a[1].as_f64().unwrap();
                         let coord = Coord { x: x + self.layer_info.loc_x_offset , y: y + self.layer_info.loc_y_offset };
-                        province.coords.all_locs.push(coord.clone());
+                        province.coords.all_locs.push(coord);
                         province.coords.primary_unit_coordinate = Some(coord);
                     }                    
                 }
@@ -794,7 +791,7 @@ impl Parser {
                         let x = a[0].as_f64().unwrap();
                         let y = a[1].as_f64().unwrap();
                         let coord = Coord { x: x + self.layer_info.loc_x_offset , y: y + self.layer_info.loc_y_offset };
-                        province.coords.all_rets.push(coord.clone());
+                        province.coords.all_rets.push(coord);
                         province.coords.retreat_unit_coordinate = Some(coord);
                     }                    
                 }
@@ -812,16 +809,16 @@ impl Parser {
             panic!("Province border has non path attribute");
         }
 
-        let path_string = get_attribute(&province_data, "d").expect("Province path data not found");
+        let path_string = get_attribute(province_data, "d").expect("Province path data not found");
 
             // TODO all this
-        let this_translation = Transform::get_transform(&province_data);
+        let this_translation = Transform::get_transform(province_data);
 
         let province_coordinates = parse_path(&path_string, layer_translation, &this_translation);
 
         let name = {
             if self.layer_info.province_labels {
-                get_inkspace_label(&province_data).into_owned()
+                get_inkspace_label(province_data).into_owned()
             } else {
                 String::from("")
             }

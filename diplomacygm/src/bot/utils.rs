@@ -145,7 +145,7 @@ pub async fn is_gm(ctx: Context<'_>) -> bool {
         }
     }
 
-    return false;
+    false
 }
 
 pub async fn is_gm_channel(ctx: Context<'_>) -> bool {
@@ -157,7 +157,7 @@ pub async fn is_gm_channel(ctx: Context<'_>) -> bool {
         return is_gm_channel_name(channel.name()) && is_gm_category(parent_id.name(ctx).await.unwrap().as_str());
     }
 
-    return false;
+    false
     
 }
 

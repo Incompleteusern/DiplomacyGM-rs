@@ -33,7 +33,7 @@ impl Transform {
     pub fn transform(&self, p: Coord) -> Coord {
         let x = self.x_dx * p.x + self.x_dy * p.y + self.x_c;
         let y = self.y_dx * p.x + self.y_dy * p.y + self.y_c;
-        Coord { x: x, y: y }
+        Coord { x, y }
     }
 
     pub fn inverse_transform(&self, p: Coord) -> Coord {

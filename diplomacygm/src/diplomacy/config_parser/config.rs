@@ -29,10 +29,10 @@ pub struct LayerInfo {
 impl LayerInfo {
     pub fn new(layers: &Value) -> LayerInfo {
 
-        let province_labels = layers.get("province_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let center_labels = layers.get("center_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let unit_labels = layers.get("unit_labels").map(|f| f.as_bool()).flatten().unwrap_or(false);
-        let unit_type_labeled = layers.get("unit_type_labeled").map(|f| f.as_bool()).flatten().unwrap_or(false);
+        let province_labels = layers.get("province_labels").and_then(|f| f.as_bool()).unwrap_or(false);
+        let center_labels = layers.get("center_labels").and_then(|f| f.as_bool()).unwrap_or(false);
+        let unit_labels = layers.get("unit_labels").and_then(|f| f.as_bool()).unwrap_or(false);
+        let unit_type_labeled = layers.get("unit_type_labeled").and_then(|f| f.as_bool()).unwrap_or(false);
 
         let land_layer = get_json_string(layers, "land_layer").to_string();
         let island_layer = get_json_string(layers, "island_borders").to_string();
@@ -41,11 +41,7 @@ impl LayerInfo {
         let names_layer: String = get_json_string(layers, "province_names").to_string();
         let centers_layer = get_json_string(layers, "supply_center_icons").to_string();
         let units_layer = {
-            if let Some(value) = layers.get("starting_units") {
-                Some(value.as_str().unwrap().to_string())
-            } else { 
-                None
-            }
+            layers.get("starting_units").map(|value| value.as_str().unwrap().to_string())
         };
         let phantom_primary_armies_layer = get_json_string(layers, "army").to_string();
         let phantom_retreat_armies_layer = get_json_string(layers, "retreat_army").to_string();

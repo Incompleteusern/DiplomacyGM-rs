@@ -27,7 +27,7 @@ pub fn get_float(m: &Captures, i: usize) -> f64 {
 }
 
 pub fn get_attribute<'a>(e: &'a BytesStart, id: &str) -> Option<Cow<'a, str>> {
-    e.try_get_attribute(id).expect(format!("Failed to get attribute \'{}\' in svg", id).as_str())
+    e.try_get_attribute(id).unwrap_or_else(|_| panic!("Failed to get attribute \'{}\' in svg", id))
         .map(|f| f.unescape_value().expect("Failed to unescape value in svg"))    
 }
 
@@ -51,7 +51,7 @@ pub fn get_fill_color(style: &str) -> Option<&str> {
         }
     }
 
-    return None
+    None
 }
 
 pub fn get_player(e: &BytesStart, color_to_player: &HashMap<String, Option<Arc<PlayerInfo>>>) -> Option<Arc<PlayerInfo>> {
@@ -68,7 +68,7 @@ pub fn get_player(e: &BytesStart, color_to_player: &HashMap<String, Option<Arc<P
 
 
 pub fn get_json_string<'a>(data: &'a Value, string: &'a str) -> &'a str {
-     data.get(string).expect(format!("Expected \'{}\' in json", string).as_str()).as_str().expect(format!("Expected \'{}\' as string", string).as_str())
+     data.get(string).unwrap_or_else(|| panic!("Expected \'{}\' in json", string)).as_str().unwrap_or_else(|| panic!("Expected \'{}\' as string", string))
 }
 
 // def get_element_color(element: Element) -> str:
@@ -90,7 +90,7 @@ pub fn get_unit_coordinates(e: &BytesStart<'_>) -> Coord {
         todo!();
     }
 
-    return Transform::get_transform(e).transform(Coord { x: x.unwrap(), y: y.unwrap() });
+    Transform::get_transform(e).transform(Coord { x: x.unwrap(), y: y.unwrap() })
 }
 
 // def get_unit_coordinates(
@@ -295,7 +295,7 @@ pub fn parse_path(path_string: &str, layer_transform: &Transform, this_transform
         current_polygon.push(layer_transform.transform(this_transform.transform(coordinate)));
     }
 
-    if current_polygon.len() > 0 {
+    if !current_polygon.is_empty() {
         province_polygons.push(Polygon::new(LineString::new(current_polygon), Vec::new()));
     }
 

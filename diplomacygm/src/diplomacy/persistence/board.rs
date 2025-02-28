@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use serenity::all::GuildId;
 
-use super::{phase::Phase, player::{Player, PlayerInfo}, province::{Coast, CoastReference, Location, Province, ProvinceInfo, ProvinceReference}};
+use super::{phase::Phase, player::{Player, PlayerInfo}, province::{Coast, CoastReference, Province, ProvinceInfo, ProvinceReference}};
 
 // TODO convert ProvinceReference to use index?
 pub struct BoardInfo {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Mutex, RwLock}};
+use std::{collections::HashMap, sync::RwLock};
 
 use serenity::all::GuildId;
 use tokio::task;
@@ -27,7 +27,7 @@ impl Manager {
     pub fn list_servers(&self) -> Vec<GuildId> {
         let boards = self._boards.read().unwrap();
 
-        boards.keys().map(|x| { x.clone() }).collect::<Vec<GuildId>>()
+        boards.keys().copied().collect::<Vec<GuildId>>()
     }
 
     pub async fn create_game(&self, server_id: &GuildId, gametype: String) -> String {
@@ -46,16 +46,16 @@ impl Manager {
         let mut boards = self._boards.write().unwrap();
         let mut new_board = Board::new(info, Phase::initial());
 
-        new_board.board_id = Some(server_id.clone());
+        new_board.board_id = Some(*server_id);
 //         self._database.save_board(server_id, self._boards[server_id])
-        boards.insert(server_id.clone(), RwLock::new(new_board));
+        boards.insert(*server_id, RwLock::new(new_board));
         println!("{}", server_id.clone());
         
 
         // self._boards[server_id] = get_parser(gametype).parse()
 
 //         return f"{self._boards[server_id].data['name']} game created"
-        return format!("{} game created", "idk");
+        format!("{} game created", "idk")
 
     }
 

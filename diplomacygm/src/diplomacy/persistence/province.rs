@@ -136,13 +136,13 @@ impl ProvinceInfo {
 
         let mut sea_provinces = Vec::new();
         for reference in &self.adjacent {
-            let province = resolve(&reference).borrow();
+            let province = resolve(reference).borrow();
             if province.province_type == ProvinceType::SEA || province.province_type == ProvinceType::ISLAND {
                 sea_provinces.push(province.to_reference());
             }
         }
 
-        if sea_provinces.len() > 0 {
+        if !sea_provinces.is_empty() {
             let name = format!("{} coast", self.name);
             self.coasts = Some(vec![
                 Coast { 
