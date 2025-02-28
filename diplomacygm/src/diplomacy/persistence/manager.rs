@@ -10,7 +10,7 @@ use super::{board::Board, phase::Phase};
 //  Manager acts as an intermediary between Bot (the Discord API), Board (the board state), the database.
 pub struct Manager {
     // database: ,
-    _boards: RwLock<HashMap<GuildId, Mutex<Board>>>,
+    _boards: RwLock<HashMap<GuildId, RwLock<Board>>>,
 }
 
 impl Manager {
@@ -48,7 +48,7 @@ impl Manager {
 
         new_board.board_id = Some(server_id.clone());
 //         self._database.save_board(server_id, self._boards[server_id])
-        boards.insert(server_id.clone(), Mutex::new(new_board));
+        boards.insert(server_id.clone(), RwLock::new(new_board));
         println!("{}", server_id.clone());
         
 
@@ -61,7 +61,7 @@ impl Manager {
 
     pub fn change_fish(&self, server_id: GuildId, amount: i64) -> i64 {
         let boards = self._boards.read().unwrap();
-        let mut board = boards.get(&server_id).unwrap_or_else(|| todo!()).lock().unwrap();
+        let mut board = boards.get(&server_id).unwrap_or_else(|| todo!()).write().unwrap();
         board.fish += amount;
 
         board.fish
@@ -69,7 +69,7 @@ impl Manager {
 
     pub fn province_info(&self, server_id: GuildId, name: String) -> String {
         let boards = self._boards.read().unwrap();
-        let board = boards.get(&server_id).unwrap_or_else(|| todo!()).lock().unwrap();
+        let board = boards.get(&server_id).unwrap_or_else(|| todo!()).read().unwrap();
         let (province, coast) = board.get_province_and_coast(name.clone());
         // println!("{:?}", province);
         // println!("{:?}", coast);

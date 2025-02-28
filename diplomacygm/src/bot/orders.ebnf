@@ -1,0 +1,114 @@
+WS: /[ \t]+/
+NL: "\n"
+
+movement_phase: ".order" (WS order?)? (NL (order? WS? NL) *)?
+
+retreat_phase: ".order" (WS retreat?)? (NL (retreat? WS? NL) *)?
+
+build_phase: ".order" (WS build?)? (NL (build? WS? NL) *)?
+
+order: move_order
+    | hold_order
+    | support_order
+    | convoy_move_order
+    | convoy_order
+    | core_order
+
+retreat: retreat_order
+       | disband_order
+
+build: build_unit
+     | disband_unit
+
+move_order: unit WS MOVE WS province
+
+hold_order: unit WS HOLD
+
+support_order: unit WS ((SUPPORT WS (move_order | hold_order)) | ((SUPPORT_HOLD | SUPPORT) WS unit))
+
+convoy_move_order: unit WS CONVOY_MOVE WS province
+
+convoy_order: unit WS CONVOY WS move_order
+
+core_order: unit WS CORE
+
+retreat_order: retreat_unit WS RETREAT WS province
+
+disband_order: ( retreat_unit WS DISBAND ) | ( DISBAND WS retreat_unit )
+
+disband_unit: ( unit WS DISBAND ) | ( DISBAND WS unit )
+
+build_unit: ( BUILD WS DESCRIPTOR province ) | ( BUILD WS province DESCRIPTOR )
+
+SUPPORT_HOLD.3 : /(support|supports|s)[ \-_]?(hold|holds|h|stand|stands)/
+
+HOLD.2 : "h"
+       | "hold"
+       | "holds"
+       | "stand"
+       | "stands"
+
+MOVE.2 : "-"
+       | "–"
+       | "−"
+       | "->"
+       | "–>"
+       | "−>"
+       | "to"
+       | "m"
+       | "move"
+       | "moves"
+       | "into"
+
+CONVOY_MOVE.2 : "c-"
+        | "c–"
+        | "cm"
+        | "convoy -"
+        | "convoy –"
+        | "convoy ->"
+        | "convoy –>"
+        | "convoy to"
+        | "convoy m"
+        | "convoy move"
+        | "convoy moves"
+        | "convoy into"
+
+SUPPORT.2 : "s"
+        | "support"
+        | "supports"
+
+CONVOY.2 : "c"
+        | "convoy"
+        | "convoys"
+
+CORE.2 : "core"
+    | "cores"
+
+RETREAT.2 : MOVE
+          | "r"
+          | "retreat"
+          | "retreats"
+
+DISBAND.2 : "d"
+          | "disband"
+          | "disbands"
+          | "boom"
+          | "explodes"
+          | "dies"
+          | "drop"
+          | "drops"
+          | "remove"
+
+BUILD.2 : "b"
+        | "build"
+        | "place"
+
+unit : (DESCRIPTOR)? province
+
+retreat_unit : (DESCRIPTOR)? province
+
+DESCRIPTOR.2 : /[afAF]/ WS
+
+province : PROVINCE (WS PROVINCE) *
+
+PROVINCE : /(?![fFaA]\s)[a-zA-Z0-9\._'-]+(?=\s)/
